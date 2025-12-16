@@ -1,0 +1,605 @@
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ArrowLeft, Save, Camera, Car, ChevronDown } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { MaskedInput } from '@/components/MaskedInput';
+import { UppercaseInput } from '@/components/UppercaseInput';
+import PhotoUpload from '@/components/PhotoUpload';
+import { supabase } from '@/integrations/supabase/client';
+import CreatableSelect from '@/components/CreatableSelect';
+import { useHistoricalData } from '@/hooks/useHistoricalData';
+
+const Cadastro = () => {
+  const navigate = useNavigate();
+  const { id } = useParams();
+  const { toast } = useToast();
+  const { guinchos } = useHistoricalData();
+  const placaRef = useRef<HTMLInputElement>(null);
+  const isEditing = !!id;
+
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [currentStep, setCurrentStep] = useState(0);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+
+
+  useEffect(() => {
+    if (isEditing) {
+      loadVehicleData();
+    } else {
+      setTimeout(() => placaRef.current?.focus(), 100);
+    }
+  }, [id]);
+
+  const loadVehicleData = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('vehicles')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        setFormData({
+          placa: data.placa,
+          modelo: data.modelo,
+          origem: data.origem || '',
+          guincho: data.guincho || '',
+          placa_guincho: data.placa_guincho || '',
+          motorista: data.motorista || '',
+          chave_principal: data.chave_principal || false,
+          chave_reserva: data.chave_reserva || false,
+          step: data.step || false,
+          macaco: data.macaco || false,
+          triangulo: data.triangulo || false,
+          chave_roda: data.chave_roda || false,
+          observacoes: data.observacoes || '',
+        });
+
+        const { data: photos } = await supabase
+          .from('vehicle_photos')
+          .select('*')
+          .eq('vehicle_id', id);
+        
+        if (photos) {
+          const newFotos = ['', '', '', ''];
+          photos.forEach(p => {
+            if (p.photo_type === 'chassi') {
+              setFotoChassi(p.photo_url);
+            } else if (p.photo_type.startsWith('foto_')) {
+              const index = parseInt(p.photo_type.split('_')[1]) - 1;
+              if (index >= 0 && index < 4) newFotos[index] = p.photo_url;
+            }
+          });
+          setFotos(newFotos);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading vehicle:', error);
+      toast({ title: 'ERRO AO CARREGAR VEÍCULO', variant: 'destructive' });
+      navigate('/dashboard');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const [formData, setFormData] = useState({
+    placa: '',
+    modelo: '',
+    origem: '',
+    guincho: '',
+    placa_guincho: '',
+    motorista: '',
+    chave_principal: false,
+    chave_reserva: false,
+    step: false,
+    macaco: false,
+    triangulo: false,
+    chave_roda: false,
+    observacoes: '',
+  });
+
+  const [fotos, setFotos] = useState<string[]>(['', '', '', '']);
+  const [fotoChassi, setFotoChassi] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [isGlobalCameraMode, setIsGlobalCameraMode] = useState(false);
+
+  const handleChange = (field: string, value: string | boolean) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleFotoChange = (index: number, value: string) => {
+    const newFotos = [...fotos];
+    newFotos[index] = value;
+    setFotos(newFotos);
+  };
+
+  const validatePlaca = (placa: string) => {
+    // Old: ABC-1234
+    // Mercosul: ABC1C34
+    const regexOld = /^[A-Z]{3}-\d{4}$/;
+    const regexMercosul = /^[A-Z]{3}\d[A-Z]\d{2}$/;
+    return regexOld.test(placa) || regexMercosul.test(placa);
+  };
+
+  const checkPlaca = async (placa: string) => {
+    if (!validatePlaca(placa)) return;
+
+    try {
+      let query = supabase
+        .from('vehicles')
+        .select('id')
+        .eq('placa', placa)
+        .eq('status', 'entrada');
+
+      if (isEditing && id) {
+        query = query.neq('id', id);
+      }
+
+      const { data, error } = await query.maybeSingle();
+
+      if (error) {
+        console.error('Error checking placa:', error);
+        return;
+      }
+
+      if (data) {
+        toast({
+          title: 'VEÍCULO JÁ ESTÁ NO PÁTIO',
+          description: `O veículo com placa ${placa} já consta como entrada.`,
+          variant: 'destructive',
+        });
+        handleChange('placa', '');
+        setTimeout(() => placaRef.current?.focus(), 100);
+      }
+    } catch (error) {
+      console.error('Error checking placa:', error);
+    }
+  };
+
+  const allItems = ['chave_principal', 'chave_reserva', 'step', 'macaco', 'triangulo', 'chave_roda'];
+  const isAllSelected = allItems.every(item => formData[item as keyof typeof formData]);
+
+  const handleSelectAll = (checked: boolean) => {
+    setFormData(prev => {
+      const newData = { ...prev };
+      allItems.forEach(item => {
+        // @ts-ignore
+        newData[item] = checked;
+      });
+      return newData;
+    });
+  };
+
+  const scrollToElement = (id: string) => {
+    setTimeout(() => {
+      const element = document.getElementById(id);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+  };
+
+  const nextStep = () => {
+    if (currentStep === 0) {
+      if (!validatePlaca(formData.placa)) {
+        toast({ title: 'PLACA INVÁLIDA', variant: 'destructive' });
+        return;
+      }
+      if (!formData.modelo || !formData.origem || !formData.guincho || !formData.motorista) {
+        toast({ title: 'PREENCHA TODOS OS CAMPOS OBRIGATÓRIOS', variant: 'destructive' });
+        return;
+      }
+    }
+    
+    setCurrentStep(prev => prev + 1);
+    
+    // Scroll to the next section
+    if (currentStep === 0) scrollToElement('card-items');
+    if (currentStep === 1) scrollToElement('card-obs');
+    if (currentStep === 2) scrollToElement('card-photos');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validatePlaca(formData.placa)) {
+      toast({ title: 'PLACA INVÁLIDA. USE O FORMATO ABC-1234 OU ABC1C34', variant: 'destructive' });
+      return;
+    }
+
+    if (!formData.modelo || !formData.origem || !formData.guincho || !formData.motorista) {
+      toast({ title: 'PREENCHA TODOS OS CAMPOS OBRIGATÓRIOS', variant: 'destructive' });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({ title: 'USUÁRIO NÃO AUTENTICADO', variant: 'destructive' });
+        return;
+      }
+
+      // Check for duplicate placa again to be safe
+      let duplicateQuery = supabase
+        .from('vehicles')
+        .select('id')
+        .eq('placa', formData.placa)
+        .eq('status', 'entrada');
+      
+      if (isEditing && id) {
+        duplicateQuery = duplicateQuery.neq('id', id);
+      }
+        
+      const { data: duplicate } = await duplicateQuery.maybeSingle();
+
+      if (duplicate) {
+        toast({
+          title: 'VEÍCULO JÁ ESTÁ NO PÁTIO',
+          description: `O veículo com placa ${formData.placa} já consta como entrada.`,
+          variant: 'destructive',
+        });
+        setLoading(false);
+        handleChange('placa', '');
+        setTimeout(() => placaRef.current?.focus(), 100);
+        return;
+      }
+
+      let vehicleId = id;
+
+      if (isEditing && id) {
+        // Update
+        const { error: updateError } = await supabase
+          .from('vehicles')
+          .update({
+            placa: formData.placa,
+            modelo: formData.modelo,
+            origem: formData.origem,
+            guincho: formData.guincho,
+            placa_guincho: formData.placa_guincho || null,
+            motorista: formData.motorista,
+            chave_principal: formData.chave_principal,
+            chave_reserva: formData.chave_reserva,
+            step: formData.step,
+            macaco: formData.macaco,
+            triangulo: formData.triangulo,
+            chave_roda: formData.chave_roda,
+            observacoes: formData.observacoes,
+          })
+          .eq('id', id);
+          
+        if (updateError) throw updateError;
+        
+        // Clear existing photos to re-insert
+        await supabase.from('vehicle_photos').delete().eq('vehicle_id', id);
+      } else {
+        // Insert
+        const { data: vehicleData, error: vehicleError } = await supabase
+          .from('vehicles')
+          .insert({
+            user_id: user.id,
+            placa: formData.placa,
+            modelo: formData.modelo,
+            origem: formData.origem,
+            guincho: formData.guincho,
+            placa_guincho: formData.placa_guincho || null,
+            motorista: formData.motorista,
+            chave_principal: formData.chave_principal,
+            chave_reserva: formData.chave_reserva,
+            step: formData.step,
+            macaco: formData.macaco,
+            triangulo: formData.triangulo,
+            chave_roda: formData.chave_roda,
+            observacoes: formData.observacoes,
+            status: 'entrada',
+          })
+          .select()
+          .single();
+
+        if (vehicleError) throw vehicleError;
+        vehicleId = vehicleData.id;
+      }
+
+      // Save photos
+      // @ts-ignore
+      const photosToSave = fotos.filter(f => f).map((url, index) => ({
+        vehicle_id: vehicleId,
+        photo_url: url,
+        photo_type: `foto_${index + 1}`,
+      }));
+
+      if (fotoChassi) {
+        photosToSave.push({
+          // @ts-ignore
+          vehicle_id: vehicleId,
+          photo_url: fotoChassi,
+          photo_type: 'chassi',
+        });
+      }
+
+      if (photosToSave.length > 0) {
+        const { error: photosError } = await supabase
+          .from('vehicle_photos')
+          .insert(photosToSave);
+
+        if (photosError) console.error('Error saving photos:', photosError);
+      }
+
+      toast({ title: isEditing ? 'VEÍCULO ATUALIZADO COM SUCESSO!' : 'VEÍCULO CADASTRADO COM SUCESSO!' });
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('Error saving vehicle:', error);
+      toast({ title: isEditing ? 'ERRO AO ATUALIZAR VEÍCULO' : 'ERRO AO CADASTRAR VEÍCULO', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen gradient-dark">
+      {/* Header */}
+      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
+          <Button variant="ghost" onClick={() => navigate('/dashboard')} className="text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 gradient-primary rounded-xl flex items-center justify-center">
+              <Car className="w-5 h-5 text-primary-foreground" />
+            </div>
+            <h1 className="text-xl font-bold text-foreground">{isEditing ? 'EDITAR VEÍCULO' : 'CADASTRO DE ENTRADA'}</h1>
+          </div>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-4 py-6">
+        <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl mx-auto">
+          {/* Dados do Veículo */}
+          <Card className="glass-card animate-fade-in" id="card-vehicle">
+            <CardHeader>
+              <CardTitle className="text-foreground">DADOS DO VEÍCULO</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-foreground">PLACA *</Label>
+                  <MaskedInput
+                    ref={placaRef}
+                    mask="placa"
+                    placeholder="ABC-1234"
+                    value={formData.placa}
+                    onChange={(value) => handleChange('placa', value)}
+                    onBlur={() => checkPlaca(formData.placa)}
+                    className="bg-input border-border text-foreground placeholder:text-muted-foreground"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-foreground">MODELO *</Label>
+                  <UppercaseInput
+                    placeholder="EX: HONDA CIVIC"
+                    value={formData.modelo}
+                    onChange={(e) => handleChange('modelo', e.target.value)}
+                    className="bg-input border-border text-foreground placeholder:text-muted-foreground"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-foreground">ORIGEM *</Label>
+                  <UppercaseInput
+                    placeholder="EX: SÃO PAULO"
+                    value={formData.origem}
+                    onChange={(e) => handleChange('origem', e.target.value)}
+                    className="bg-input border-border text-foreground placeholder:text-muted-foreground"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-foreground">GUINCHO *</Label>
+                  <CreatableSelect
+                    options={guinchos.map(g => ({ value: g.name, label: g.name, data: g }))}
+                    value={formData.guincho}
+                    onChange={(val, data) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        guincho: val,
+                        placa_guincho: data?.placa || prev.placa_guincho,
+                        motorista: data?.motorista || prev.motorista
+                      }))
+                    }}
+                    placeholder="SELECIONE OU DIGITE O GUINCHO"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-foreground">PLACA DO GUINCHO</Label>
+                  <MaskedInput
+                    mask="placa"
+                    placeholder="ABC-1234"
+                    value={formData.placa_guincho}
+                    onChange={(value) => handleChange('placa_guincho', value)}
+                    className="bg-input border-border text-foreground placeholder:text-muted-foreground"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-foreground">NOME DO MOTORISTA *</Label>
+                  <UppercaseInput
+                    placeholder="NOME COMPLETO"
+                    value={formData.motorista}
+                    onChange={(e) => handleChange('motorista', e.target.value)}
+                    className="bg-input border-border text-foreground placeholder:text-muted-foreground"
+                  />
+                </div>
+              </div>
+
+              {isMobile && !isEditing && currentStep === 0 && (
+                <Button 
+                  type="button" 
+                  onClick={nextStep}
+                  className="w-full gradient-primary text-primary-foreground mt-4"
+                >
+                  PRÓXIMO
+                  <ChevronDown className="w-4 h-4 ml-2" />
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Itens */}
+          {(!isMobile || isEditing || currentStep >= 1) && (
+            <Card className="glass-card animate-fade-in" style={{ animationDelay: '0.1s' }} id="card-items">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <CardTitle className="text-foreground">ITENS DO VEÍCULO</CardTitle>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="select-all"
+                    checked={isAllSelected}
+                    onCheckedChange={handleSelectAll}
+                    className="data-[state=checked]:bg-primary"
+                  />
+                  <Label htmlFor="select-all" className="text-foreground text-sm cursor-pointer font-medium">
+                    MARCAR TODOS
+                  </Label>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  {[
+                    { key: 'chave_principal', label: 'CHAVE PRINCIPAL' },
+                    { key: 'chave_reserva', label: 'CHAVE RESERVA' },
+                    { key: 'step', label: 'STEP' },
+                    { key: 'macaco', label: 'MACACO' },
+                    { key: 'triangulo', label: 'TRIÂNGULO' },
+                    { key: 'chave_roda', label: 'CHAVE DE RODA' },
+                  ].map((item) => (
+                    <div key={item.key} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={item.key}
+                        checked={formData[item.key as keyof typeof formData] as boolean}
+                        onCheckedChange={(checked) => handleChange(item.key, checked as boolean)}
+                        className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                      />
+                      <Label htmlFor={item.key} className="text-foreground text-sm cursor-pointer">
+                        {item.label}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+
+                {isMobile && !isEditing && currentStep === 1 && (
+                  <Button 
+                    type="button" 
+                    onClick={nextStep}
+                    className="w-full gradient-primary text-primary-foreground mt-6"
+                  >
+                    PRÓXIMO
+                    <ChevronDown className="w-4 h-4 ml-2" />
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Observações */}
+          {(!isMobile || isEditing || currentStep >= 2) && (
+            <Card className="glass-card animate-fade-in" style={{ animationDelay: '0.2s' }} id="card-obs">
+              <CardHeader>
+                <CardTitle className="text-foreground">OBSERVAÇÕES</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  placeholder="OBSERVAÇÕES ADICIONAIS SOBRE O VEÍCULO..."
+                  value={formData.observacoes}
+                  onChange={(e) => handleChange('observacoes', e.target.value.toUpperCase())}
+                  rows={4}
+                  className="bg-input border-border text-foreground placeholder:text-muted-foreground resize-none uppercase"
+                />
+
+                {isMobile && !isEditing && currentStep === 2 && (
+                  <Button 
+                    type="button" 
+                    onClick={nextStep}
+                    className="w-full gradient-primary text-primary-foreground mt-4"
+                  >
+                    PRÓXIMO
+                    <ChevronDown className="w-4 h-4 ml-2" />
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Fotos */}
+          {(!isMobile || isEditing || currentStep >= 3) && (
+            <Card className="glass-card animate-fade-in" style={{ animationDelay: '0.3s' }} id="card-photos">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <CardTitle className="text-foreground flex items-center gap-2">
+                  <Camera className="w-5 h-5" />
+                  FOTOS DO VEÍCULO
+                </CardTitle>
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor="camera-mode" className="text-foreground text-sm cursor-pointer font-medium">
+                    {isGlobalCameraMode ? 'CÂMERA' : 'UPLOAD'}
+                  </Label>
+                  <Switch
+                    id="camera-mode"
+                    checked={isGlobalCameraMode}
+                    onCheckedChange={setIsGlobalCameraMode}
+                    className="data-[state=checked]:bg-primary"
+                  />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  {fotos.map((foto, index) => (
+                    <PhotoUpload
+                      key={index}
+                      label={`FOTO ${index + 1}`}
+                      value={foto}
+                      onChange={(url) => handleFotoChange(index, url)}
+                      isCameraMode={isGlobalCameraMode}
+                    />
+                  ))}
+                </div>
+                <PhotoUpload
+                  label="FOTO DO CHASSI"
+                  value={fotoChassi}
+                  onChange={setFotoChassi}
+                  isCameraMode={isGlobalCameraMode}
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Submit */}
+          {(!isMobile || isEditing || currentStep >= 3) && (
+            <Button 
+              type="submit" 
+              disabled={loading}
+              className="w-full gradient-primary text-primary-foreground hover:opacity-90 transition-opacity h-12 text-lg"
+            >
+              <Save className="w-5 h-5 mr-2" />
+              {loading ? 'SALVANDO...' : (isEditing ? 'SALVAR ALTERAÇÕES' : 'SALVAR ENTRADA')}
+            </Button>
+          )}
+        </form>
+      </main>
+    </div>
+  );
+};
+
+export default Cadastro;
