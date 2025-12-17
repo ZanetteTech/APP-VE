@@ -53,8 +53,8 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     {/* <TooltipProvider> */}
       <VehicleProvider>
-        <Toaster />
-        <Sonner />
+        {/* <Toaster /> */}
+        {/* <Sonner /> */}
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Splash />} />

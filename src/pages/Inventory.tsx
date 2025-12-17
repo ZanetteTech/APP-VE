@@ -12,6 +12,8 @@ import { MaskedInput } from '@/components/MaskedInput';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
+import confetti from 'canvas-confetti';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,7 +30,15 @@ interface ScannedVehicle {
   placa: string;
   modelo: string;
   cor?: string;
+  foto?: string;
   scanned_at: Date;
+}
+
+interface PreviewVehicle {
+  id: string;
+  placa: string;
+  modelo: string;
+  foto?: string;
 }
 
 interface InventorySession {
@@ -49,6 +59,14 @@ const Inventory = () => {
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Finish Inventory State
+  const [finishStep, setFinishStep] = useState<'idle' | 'counting' | 'result'>('idle');
+  const [countedVehicles, setCountedVehicles] = useState(0);
+
+  // Preview Modal State
+  const [previewVehicle, setPreviewVehicle] = useState<PreviewVehicle | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+
   // History State
   const [history, setHistory] = useState<InventorySession[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -66,6 +84,26 @@ const Inventory = () => {
       loadHistory();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (finishStep === 'counting') {
+      let current = 0;
+      const total = scannedVehicles.length;
+      const duration = 2000; // 2 seconds animation
+      const intervalTime = duration / total;
+      
+      const timer = setInterval(() => {
+        current += 1;
+        setCountedVehicles(current);
+        if (current >= total) {
+          clearInterval(timer);
+          setTimeout(() => setFinishStep('result'), 500);
+        }
+      }, Math.max(intervalTime, 50)); // Min 50ms interval
+
+      return () => clearInterval(timer);
+    }
+  }, [finishStep, scannedVehicles.length]);
 
   const loadHistory = async () => {
     setLoadingHistory(true);
@@ -116,17 +154,22 @@ const Inventory = () => {
       if (error) throw error;
 
       if (data) {
-        setScannedVehicles(prev => [{
+        // Fetch photos
+        const { data: photos } = await supabase
+          .from('vehicle_photos')
+          .select('*')
+          .eq('vehicle_id', data.id);
+          
+        const frontPhoto = photos?.find(p => p.photo_type === 'foto_1' || p.photo_type.startsWith('foto_'))?.photo_url;
+
+        setPreviewVehicle({
           id: data.id,
           placa: data.placa,
           modelo: data.modelo,
-          scanned_at: new Date()
-        }, ...prev]);
-        
-        toast({ 
-          title: 'VEÍCULO ADICIONADO',
-          className: "bg-green-500 text-white"
+          foto: frontPhoto
         });
+        setShowPreviewModal(true);
+        setPlacaInput('');
       } else {
         // Se não achou como entrada, verifica se já saiu ou se não existe
         const { data: saidaData } = await supabase
@@ -150,15 +193,38 @@ const Inventory = () => {
             variant: 'destructive' 
           });
         }
+        setPlacaInput('');
+        setTimeout(() => inputRef.current?.focus(), 100);
       }
     } catch (error) {
       console.error('Error checking placa:', error);
       toast({ title: 'ERRO AO VERIFICAR PLACA', variant: 'destructive' });
-    } finally {
-      setLoading(false);
       setPlacaInput('');
       setTimeout(() => inputRef.current?.focus(), 100);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const confirmAddVehicle = () => {
+    if (!previewVehicle) return;
+    
+    setScannedVehicles(prev => [{
+      id: previewVehicle.id,
+      placa: previewVehicle.placa,
+      modelo: previewVehicle.modelo,
+      foto: previewVehicle.foto,
+      scanned_at: new Date()
+    }, ...prev]);
+    
+    toast({ 
+      title: 'VEÍCULO ADICIONADO',
+      className: "bg-green-500 text-white"
+    });
+    
+    setShowPreviewModal(false);
+    setPreviewVehicle(null);
+    setTimeout(() => inputRef.current?.focus(), 100);
   };
 
   const handleFinishInventory = async () => {
@@ -200,8 +266,13 @@ const Inventory = () => {
       if (itemsError) throw itemsError;
 
       toast({ title: 'INVENTÁRIO FINALIZADO COM SUCESSO!' });
-      setScannedVehicles([]);
-      setActiveTab('history');
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+      
+      setFinishStep('counting');
     } catch (error) {
       console.error('Error finishing inventory:', error);
       toast({ title: 'ERRO AO FINALIZAR INVENTÁRIO', variant: 'destructive' });
@@ -250,6 +321,80 @@ const Inventory = () => {
     }
   };
 
+  const generateCurrentInventoryPDF = async () => {
+    try {
+      const doc = new jsPDF();
+      
+      doc.setFontSize(20);
+      doc.text('RELATÓRIO DE INVENTÁRIO COMPLETO', 105, 20, { align: 'center' });
+      
+      doc.setFontSize(12);
+      doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`, 14, 30);
+      doc.text(`Total de Veículos: ${scannedVehicles.length}`, 14, 37);
+
+      // Preload images
+      const tableBody = await Promise.all(scannedVehicles.map(async (vehicle) => {
+        let photoData = '';
+        if (vehicle.foto) {
+          try {
+            const response = await fetch(vehicle.foto);
+            const blob = await response.blob();
+            photoData = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.readAsDataURL(blob);
+            });
+          } catch (e) {
+            console.error("Error loading image for PDF", e);
+          }
+        }
+        return [vehicle.placa, vehicle.modelo, photoData];
+      }));
+
+      autoTable(doc, {
+        startY: 45,
+        head: [['PLACA', 'MODELO', 'FOTO']],
+        body: tableBody,
+        theme: 'grid',
+        headStyles: { fillColor: [0, 0, 0] },
+        bodyStyles: { minCellHeight: 25, valign: 'middle' },
+        columnStyles: {
+            0: { cellWidth: 40 },
+            1: { cellWidth: 'auto' },
+            2: { cellWidth: 30 }
+        },
+        didParseCell: (data) => {
+          if (data.column.index === 2 && data.section === 'body') {
+            data.cell.text = [];
+          }
+        },
+        didDrawCell: (data) => {
+          if (data.column.index === 2 && data.cell.section === 'body') {
+             const img = data.cell.raw as string;
+             if (img) {
+                 try {
+                     doc.addImage(img, 'JPEG', data.cell.x + 2, data.cell.y + 2, 20, 20);
+                 } catch (e) {
+                     // Ignore image errors
+                 }
+             }
+          }
+        }
+      });
+
+      doc.save(`inventario-completo-${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast({ title: 'ERRO AO GERAR PDF', variant: 'destructive' });
+    }
+  };
+
+  const handleCloseFinishModal = () => {
+    setFinishStep('idle');
+    setScannedVehicles([]);
+    setActiveTab('history');
+  };
+
   const confirmDelete = (type: 'single' | 'all', sessionId?: string) => {
     setDeleteConfig({ isOpen: true, type, sessionId });
   };
@@ -290,9 +435,6 @@ const Inventory = () => {
     <div className="min-h-screen gradient-dark">
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Button variant="ghost" onClick={() => navigate('/dashboard')} className="text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 gradient-primary rounded-xl flex items-center justify-center">
               <Check className="w-5 h-5 text-primary-foreground" />
@@ -301,6 +443,13 @@ const Inventory = () => {
           </div>
         </div>
       </header>
+
+      <Button
+        onClick={() => navigate('/dashboard')}
+        className="fixed bottom-6 right-6 rounded-full w-12 h-12 shadow-lg z-50 gradient-primary text-primary-foreground"
+      >
+        <ArrowLeft className="w-6 h-6" />
+      </Button>
 
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -317,29 +466,18 @@ const Inventory = () => {
             <div className="max-w-2xl mx-auto space-y-6">
               <Card className="glass-card">
                 <CardContent className="p-6 space-y-4">
-                  <div className="flex gap-4">
-                    <div className="flex-1">
-                      <Label className="text-foreground mb-2 block">DIGITE A PLACA</Label>
-                      <MaskedInput
-                        ref={inputRef}
-                        mask="placa"
-                        placeholder="ABC-1234"
-                        value={placaInput}
-                        onChange={setPlacaInput}
-                        onKeyDown={(e) => e.key === 'Enter' && checkAndAddPlaca()}
-                        className="bg-input border-border text-foreground text-lg uppercase h-12"
-                        disabled={loading}
-                      />
-                    </div>
-                    <div className="flex items-end">
-                      <Button 
-                        onClick={checkAndAddPlaca} 
-                        disabled={loading || !placaInput}
-                        className="h-12 w-12 gradient-primary text-primary-foreground"
-                      >
-                        <Plus className="w-6 h-6" />
-                      </Button>
-                    </div>
+                  <div className="w-full">
+                    <Label className="text-foreground mb-2 block">DIGITE A PLACA</Label>
+                    <MaskedInput
+                      ref={inputRef}
+                      mask="placa"
+                      placeholder="ABC-1234"
+                      value={placaInput}
+                      onChange={setPlacaInput}
+                      onKeyDown={(e) => e.key === 'Enter' && checkAndAddPlaca()}
+                      className="bg-input border-border text-foreground text-lg uppercase h-12 w-full"
+                      disabled={loading}
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -475,6 +613,114 @@ const Inventory = () => {
           </TabsContent>
         </Tabs>
       </main>
+
+      <Dialog open={showPreviewModal} onOpenChange={(open) => {
+        if (!open) {
+          setShowPreviewModal(false);
+          setPreviewVehicle(null);
+          setTimeout(() => inputRef.current?.focus(), 100);
+        }
+      }}>
+        <DialogContent className="glass-card border-border max-w-sm rounded-xl">
+          <DialogHeader>
+            <DialogTitle className="text-foreground text-center">CONFIRMAR VEÍCULO</DialogTitle>
+          </DialogHeader>
+          
+          {previewVehicle && (
+            <div className="flex flex-col items-center gap-4 py-4">
+              {previewVehicle.foto ? (
+                <div className="w-full aspect-video relative rounded-lg overflow-hidden border border-border">
+                  <img 
+                    src={previewVehicle.foto} 
+                    alt={`Veículo ${previewVehicle.placa}`}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-32 h-32 rounded-full bg-muted/20 flex items-center justify-center">
+                  <Car className="w-16 h-16 text-muted-foreground" />
+                </div>
+              )}
+              
+              <div className="text-center space-y-1">
+                <h2 className="text-3xl font-bold text-foreground">{previewVehicle.placa}</h2>
+                <p className="text-lg text-muted-foreground">{previewVehicle.modelo}</p>
+              </div>
+              
+              <Button 
+                onClick={confirmAddVehicle}
+                className="w-full h-12 text-lg font-bold gradient-primary text-primary-foreground mt-2"
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                ADICIONAR
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={finishStep !== 'idle'} onOpenChange={(open) => {
+        if (!open && finishStep === 'result') {
+          handleCloseFinishModal();
+        }
+      }}>
+        <DialogContent className="glass-card border-border max-w-md rounded-xl">
+          <DialogHeader>
+            <DialogTitle className="text-foreground text-center text-2xl">
+              {finishStep === 'counting' ? 'PROCESSANDO...' : 'INVENTÁRIO CONCLUÍDO'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="flex flex-col items-center gap-6 py-8">
+            {finishStep === 'counting' ? (
+              <>
+                <div className="w-20 h-20 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+                <div className="text-center space-y-2">
+                  <p className="text-xl font-bold text-foreground">
+                    {countedVehicles}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Contabilizando veículos...
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-24 h-24 rounded-full bg-success/20 flex items-center justify-center">
+                  <Check className="w-12 h-12 text-success" />
+                </div>
+                
+                <div className="text-center space-y-2">
+                  <p className="text-4xl font-bold text-foreground">
+                    {scannedVehicles.length}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Veículos contabilizados com sucesso
+                  </p>
+                </div>
+
+                <div className="w-full space-y-3 mt-4">
+                  <Button 
+                    onClick={generateCurrentInventoryPDF}
+                    className="w-full h-12 text-lg font-bold gradient-primary text-primary-foreground"
+                  >
+                    <FileText className="w-5 h-5 mr-2" />
+                    IMPRIMIR RELATÓRIO
+                  </Button>
+                  
+                  <Button 
+                    variant="outline"
+                    onClick={handleCloseFinishModal}
+                    className="w-full h-12 text-lg"
+                  >
+                    FINALIZAR
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

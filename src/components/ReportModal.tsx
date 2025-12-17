@@ -11,6 +11,15 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { FileText, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ReportModalProps {
   isOpen: boolean;
@@ -25,6 +34,7 @@ export default function ReportModal({ isOpen, onClose, vehicles }: ReportModalPr
   const [endDate, setEndDate] = useState('');
   const [statusFilter, setStatusFilter] = useState<'entrada' | 'saida'>('entrada');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showNoDataAlert, setShowNoDataAlert] = useState(false);
 
   const getFilteredData = () => {
     let filtered = [...vehicles];
@@ -70,11 +80,7 @@ export default function ReportModal({ isOpen, onClose, vehicles }: ReportModalPr
       const data = getFilteredData();
 
       if (data.length === 0) {
-        toast({
-          title: "Sem dados",
-          description: "Nenhum registro encontrado para os filtros selecionados.",
-          variant: "destructive"
-        });
+        setShowNoDataAlert(true);
         setIsGenerating(false);
         return;
       }
@@ -162,11 +168,7 @@ export default function ReportModal({ isOpen, onClose, vehicles }: ReportModalPr
       const data = getFilteredData();
       
       if (data.length === 0) {
-        toast({
-          title: "Sem dados",
-          description: "Nenhum registro encontrado para os filtros selecionados.",
-          variant: "destructive"
-        });
+        setShowNoDataAlert(true);
         return;
       }
 
@@ -202,93 +204,115 @@ export default function ReportModal({ isOpen, onClose, vehicles }: ReportModalPr
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px] glass-card border-border text-foreground">
-        <DialogHeader>
-          <DialogTitle>GERAR RELATÓRIO</DialogTitle>
-        </DialogHeader>
-        
-        <div className="space-y-6 py-4">
-          <div className="space-y-4">
-            <Label>FILTRAR POR</Label>
-            <RadioGroup value={filterType} onValueChange={(v: any) => setFilterType(v)} className="flex flex-col space-y-2">
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="all" id="all" className="border-primary text-primary" />
-                <Label htmlFor="all" className="cursor-pointer">TODA A BASE DE DADOS</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="date" id="date" className="border-primary text-primary" />
-                <Label htmlFor="date" className="cursor-pointer">POR DATA</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="status" id="status" className="border-primary text-primary" />
-                <Label htmlFor="status" className="cursor-pointer">POR STATUS (ENTRADA/SAÍDA)</Label>
-              </div>
-            </RadioGroup>
-          </div>
-
-          {filterType === 'date' && (
-            <div className="grid grid-cols-2 gap-4 animate-fade-in">
-              <div className="space-y-2">
-                <Label>DATA INICIAL</Label>
-                <Input 
-                  type="date" 
-                  value={startDate} 
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-input border-border"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>DATA FINAL</Label>
-                <Input 
-                  type="date" 
-                  value={endDate} 
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-input border-border"
-                />
-              </div>
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[425px] glass-card border-border text-foreground">
+          <DialogHeader>
+            <DialogTitle>GERAR RELATÓRIO</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-6 py-4">
+            <div className="space-y-4">
+              <Label>FILTRAR POR</Label>
+              <RadioGroup value={filterType} onValueChange={(v: any) => setFilterType(v)} className="flex flex-col space-y-2">
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="all" id="all" className="border-primary text-primary" />
+                  <Label htmlFor="all" className="cursor-pointer">TODA A BASE DE DADOS</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="date" id="date" className="border-primary text-primary" />
+                  <Label htmlFor="date" className="cursor-pointer">POR DATA</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="status" id="status" className="border-primary text-primary" />
+                  <Label htmlFor="status" className="cursor-pointer">POR STATUS (ENTRADA/SAÍDA)</Label>
+                </div>
+              </RadioGroup>
             </div>
-          )}
 
-          {filterType === 'status' && (
-            <div className="space-y-2 animate-fade-in">
-              <Label>SELECIONE O STATUS</Label>
-              <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
-                <SelectTrigger className="bg-input border-border">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="entrada">ENTRADA (NO PÁTIO)</SelectItem>
-                  <SelectItem value="saida">SAÍDA (FINALIZADOS)</SelectItem>
-                </SelectContent>
-              </Select>
+            {filterType === 'date' && (
+              <div className="grid grid-cols-2 gap-4 animate-fade-in">
+                <div className="space-y-2">
+                  <Label>DATA INICIAL</Label>
+                  <Input 
+                    type="date" 
+                    value={startDate} 
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="bg-input border-border"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>DATA FINAL</Label>
+                  <Input 
+                    type="date" 
+                    value={endDate} 
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="bg-input border-border"
+                  />
+                </div>
+              </div>
+            )}
+
+            {filterType === 'status' && (
+              <div className="space-y-2 animate-fade-in">
+                <Label>SELECIONE O STATUS</Label>
+                <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
+                  <SelectTrigger className="bg-input border-border">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="entrada">ENTRADA (NO PÁTIO)</SelectItem>
+                    <SelectItem value="saida">SAÍDA (FINALIZADOS)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 pt-4">
+              <Button 
+                onClick={exportPDF} 
+                className="w-full bg-red-600 hover:bg-red-700 text-white"
+                disabled={isGenerating}
+              >
+                {isGenerating ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <FileText className="w-4 h-4 mr-2" />
+                )}
+                {isGenerating ? 'GERANDO...' : 'PDF'}
+              </Button>
+              <Button 
+                onClick={exportExcel} 
+                className="w-full bg-green-600 hover:bg-green-700 text-white"
+                disabled={isGenerating}
+              >
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
+                EXCEL
+              </Button>
             </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-4 pt-4">
-            <Button 
-              onClick={exportPDF} 
-              className="w-full bg-red-600 hover:bg-red-700 text-white"
-              disabled={isGenerating}
-            >
-              {isGenerating ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <FileText className="w-4 h-4 mr-2" />
-              )}
-              {isGenerating ? 'GERANDO...' : 'PDF'}
-            </Button>
-            <Button 
-              onClick={exportExcel} 
-              className="w-full bg-green-600 hover:bg-green-700 text-white"
-              disabled={isGenerating}
-            >
-              <FileSpreadsheet className="w-4 h-4 mr-2" />
-              EXCEL
-            </Button>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={showNoDataAlert} onOpenChange={setShowNoDataAlert}>
+        <AlertDialogContent className="glass-card border-destructive/50 text-foreground">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">SEM DADOS</AlertDialogTitle>
+            <AlertDialogDescription className="text-foreground/80">
+              Nenhum registro foi encontrado para os filtros selecionados.
+              Por favor, tente ajustar os filtros e tente novamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction 
+              onClick={() => setShowNoDataAlert(false)}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              ENTENDI
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

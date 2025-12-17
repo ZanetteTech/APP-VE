@@ -4,7 +4,24 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Car, Plus, Search, LogOut, Phone, ArrowRightLeft, FileText, MessageSquare, ArrowLeft, Share2, ClipboardList } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { Car, Plus, Search, LogOut, Phone, ArrowRightLeft, FileText, MessageSquare, ArrowLeft, Share2, ClipboardList, Menu } from 'lucide-react';
 import { VehicleEntry } from '@/types/vehicle';
 import { useToast } from '@/hooks/use-toast';
 import VehicleCard from '@/components/VehicleCard';
@@ -29,6 +46,10 @@ const Dashboard = () => {
   const [phoneNumbers, setPhoneNumbers] = useState<{id: string; name: string; phone: string}[]>([]);
   const [userMatricula, setUserMatricula] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [vehicleToDelete, setVehicleToDelete] = useState<VehicleEntry | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showSearchDialog, setShowSearchDialog] = useState(false);
+  const [searchedPlate, setSearchedPlate] = useState('');
 
   const loadVehicles = async () => {
     try {
@@ -137,20 +158,53 @@ const Dashboard = () => {
     navigate(`/editar/${vehicle.id}`);
   };
 
+  const handleDelete = (vehicle: VehicleEntry) => {
+    setVehicleToDelete(vehicle);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!vehicleToDelete) return;
+
+    try {
+      const { error } = await supabase
+        .from('vehicles')
+        .delete()
+        .eq('id', vehicleToDelete.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "VEÍCULO EXCLUÍDO",
+        description: "O veículo foi removido com sucesso.",
+        className: "bg-success text-success-foreground border-success",
+      });
+      
+      loadVehicles();
+    } catch (error) {
+      console.error('Error deleting vehicle:', error);
+      toast({
+        title: "ERRO AO EXCLUIR",
+        description: "Não foi possível excluir o veículo.",
+        variant: "destructive",
+      });
+    } finally {
+      setShowDeleteDialog(false);
+      setVehicleToDelete(null);
+    }
+  };
+
   const handleSearch = () => {
     if (!searchPlaca) return;
-    const vehicle = vehicles.find(v => v.placa.toUpperCase() === searchPlaca.toUpperCase() && v.status === 'entrada');
-    if (vehicle) {
-      setSelectedVehicle(vehicle);
-      setShowExitModal(true);
-    } else {
-      const exitedVehicle = vehicles.find(v => v.placa.toUpperCase() === searchPlaca.toUpperCase());
-      if (exitedVehicle) {
-        toast({ title: 'ESTE VEÍCULO JÁ TEVE SAÍDA REGISTRADA', variant: 'destructive' });
-      } else {
-        toast({ title: 'VEÍCULO NÃO ENCONTRADO', variant: 'destructive' });
-      }
-    }
+    
+    setSearchedPlate(searchPlaca.toUpperCase());
+    
+    // Find the most recent entry for this plate
+    // vehicles is already sorted by created_at desc
+    const vehicle = vehicles.find(v => v.placa.toUpperCase() === searchPlaca.toUpperCase());
+    
+    setSelectedVehicle(vehicle || null);
+    setShowSearchDialog(true);
     setSearchPlaca('');
   };
 
@@ -218,9 +272,10 @@ const Dashboard = () => {
 
     // Add photos
     if (whatsAppVehicle.fotos && whatsAppVehicle.fotos.length > 0) {
+      const labels = ['FRENTE', 'TRASEIRA', 'LATERAL DIREITA', 'LATERAL ESQUERDA'];
       message += `\n📷 *FOTOS DO VEÍCULO:*\n`;
       whatsAppVehicle.fotos.forEach((foto, index) => {
-        if (foto) message += `FOTO ${index + 1}: ${foto}\n`;
+        if (foto) message += `${labels[index] || `FOTO ${index + 1}`}: ${foto}\n`;
       });
     }
 
@@ -264,50 +319,87 @@ const Dashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={() => setShowPhoneManager(true)} className="text-muted-foreground hover:text-foreground">
-              <Phone className="w-4 h-4" />
-            </Button>
-            <Button variant="ghost" onClick={handleLogout} className="text-muted-foreground hover:text-foreground">
-              <LogOut className="w-4 h-4 mr-2" />
-              SAIR
-            </Button>
+            {/* Desktop Actions */}
+            <div className="hidden md:flex items-center gap-2">
+              <Button variant="ghost" onClick={() => setShowPhoneManager(true)} className="text-muted-foreground hover:text-foreground">
+                <Phone className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" onClick={handleLogout} className="text-muted-foreground hover:bg-destructive hover:text-white">
+                <LogOut className="w-4 h-4 mr-2" />
+                SAIR
+              </Button>
+            </div>
+
+            {/* Mobile Menu */}
+            <div className="md:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+                    <Menu className="w-6 h-6" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 glass-card border-border/50">
+                  <DropdownMenuItem onClick={() => navigate('/cadastro')} className="py-3">
+                    <Plus className="w-4 h-4 mr-2" />
+                    NOVA ENTRADA
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowReportModal(true)} className="py-3">
+                    <FileText className="w-4 h-4 mr-2" />
+                    RELATÓRIOS
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/inventory')} className="py-3">
+                    <ClipboardList className="w-4 h-4 mr-2" />
+                    INVENTÁRIO
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowPhoneManager(true)} className="py-3">
+                    <Phone className="w-4 h-4 mr-2" />
+                    TELEFONE
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-border/50" />
+                  <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-white focus:bg-destructive py-3">
+                    <LogOut className="w-4 h-4 mr-2" />
+                    SAIR
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-2 md:gap-4">
           <Card className="glass-card">
-            <CardContent className="p-4 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center">
-                <Car className="w-6 h-6 text-primary" />
+            <CardContent className="p-2 md:p-4 flex flex-col md:flex-row items-center justify-center md:justify-start gap-2 md:gap-4 text-center md:text-left">
+              <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-primary/20 flex items-center justify-center shrink-0">
+                <Car className="w-5 h-5 md:w-6 md:h-6 text-primary" />
               </div>
-              <div>
-                <p className="text-muted-foreground text-sm">TOTAL VEÍCULOS</p>
-                <p className="text-2xl font-bold text-foreground">{vehicles.length}</p>
+              <div className="min-w-0">
+                <p className="text-muted-foreground text-[10px] md:text-sm truncate">TOTAL</p>
+                <p className="text-lg md:text-2xl font-bold text-foreground leading-none">{vehicles.length}</p>
               </div>
             </CardContent>
           </Card>
           <Card className="glass-card">
-            <CardContent className="p-4 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-success/20 flex items-center justify-center">
-                <ArrowRightLeft className="w-6 h-6 text-success" />
+            <CardContent className="p-2 md:p-4 flex flex-col md:flex-row items-center justify-center md:justify-start gap-2 md:gap-4 text-center md:text-left">
+              <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-success/20 flex items-center justify-center shrink-0">
+                <ArrowRightLeft className="w-5 h-5 md:w-6 md:h-6 text-success" />
               </div>
-              <div>
-                <p className="text-muted-foreground text-sm">NO PÁTIO</p>
-                <p className="text-2xl font-bold text-foreground">{entradas.length}</p>
+              <div className="min-w-0">
+                <p className="text-muted-foreground text-[10px] md:text-sm truncate">NO PÁTIO</p>
+                <p className="text-lg md:text-2xl font-bold text-foreground leading-none">{entradas.length}</p>
               </div>
             </CardContent>
           </Card>
           <Card className="glass-card">
-            <CardContent className="p-4 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-destructive/20 flex items-center justify-center">
-                <FileText className="w-6 h-6 text-destructive" />
+            <CardContent className="p-2 md:p-4 flex flex-col md:flex-row items-center justify-center md:justify-start gap-2 md:gap-4 text-center md:text-left">
+              <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-destructive/20 flex items-center justify-center shrink-0">
+                <FileText className="w-5 h-5 md:w-6 md:h-6 text-destructive" />
               </div>
-              <div>
-                <p className="text-muted-foreground text-sm">SAÍDAS</p>
-                <p className="text-2xl font-bold text-foreground">{saidas.length}</p>
+              <div className="min-w-0">
+                <p className="text-muted-foreground text-[10px] md:text-sm truncate">SAÍDAS</p>
+                <p className="text-lg md:text-2xl font-bold text-foreground leading-none">{saidas.length}</p>
               </div>
             </CardContent>
           </Card>
@@ -328,18 +420,20 @@ const Dashboard = () => {
               <Search className="w-4 h-4" />
             </Button>
           </div>
-          <Button onClick={() => setShowReportModal(true)} className="gradient-primary text-primary-foreground">
-            <FileText className="w-4 h-4 mr-2" />
-            RELATÓRIO
-          </Button>
-          <Button onClick={() => navigate('/inventory')} className="gradient-primary text-primary-foreground">
-            <ClipboardList className="w-4 h-4 mr-2" />
-            INVENTÁRIO
-          </Button>
-          <Button onClick={() => navigate('/cadastro')} className="gradient-primary text-primary-foreground">
-            <Plus className="w-4 h-4 mr-2" />
-            NOVA ENTRADA
-          </Button>
+          <div className="hidden sm:flex gap-2">
+            <Button onClick={() => setShowReportModal(true)} className="gradient-primary text-primary-foreground px-4">
+              <FileText className="w-4 h-4 mr-2" />
+              <span>RELATÓRIO</span>
+            </Button>
+            <Button onClick={() => navigate('/inventory')} className="gradient-primary text-primary-foreground px-4">
+              <ClipboardList className="w-4 h-4 mr-2" />
+              <span>INVENTÁRIO</span>
+            </Button>
+            <Button onClick={() => navigate('/cadastro')} className="gradient-primary text-primary-foreground px-4">
+              <Plus className="w-4 h-4 mr-2" />
+              <span>NOVA ENTRADA</span>
+            </Button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -377,6 +471,7 @@ const Dashboard = () => {
                       onWhatsApp={handleWhatsApp} 
                       onExit={handleExit}
                       onEdit={handleEdit}
+                      onDelete={handleDelete}
                     />
                   ))}
                 </div>
@@ -407,6 +502,7 @@ const Dashboard = () => {
                       vehicle={vehicle} 
                       onWhatsApp={handleWhatsApp} 
                       onRevert={handleRevert}
+                      onDelete={handleDelete}
                     />
                   ))}
                 </div>
@@ -415,6 +511,99 @@ const Dashboard = () => {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Search Result Modal */}
+      <Dialog open={showSearchDialog} onOpenChange={setShowSearchDialog}>
+        <DialogContent className="glass-card border-border w-[95%] max-w-lg rounded-xl">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">RESULTADO DA BUSCA</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {selectedVehicle ? (
+              <>
+                <div className={`p-4 rounded-lg border ${
+                  selectedVehicle.status === 'entrada' 
+                    ? 'bg-success/20 border-success/50' 
+                    : 'bg-destructive/20 border-destructive/50'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    {selectedVehicle.status === 'entrada' ? (
+                      <div className="w-10 h-10 rounded-full bg-success flex items-center justify-center">
+                        <Car className="w-6 h-6 text-white" />
+                      </div>
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-destructive flex items-center justify-center">
+                        <LogOut className="w-6 h-6 text-white" />
+                      </div>
+                    )}
+                    <div>
+                      <h3 className={`font-bold text-lg ${
+                        selectedVehicle.status === 'entrada' ? 'text-success' : 'text-destructive'
+                      }`}>
+                        {selectedVehicle.status === 'entrada' ? 'VEÍCULO NO PÁTIO' : 'VEÍCULO JÁ SAIU'}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {selectedVehicle.status === 'entrada' 
+                          ? `Entrada: ${new Date(selectedVehicle.data_entrada).toLocaleString('pt-BR')}`
+                          : `Saída: ${selectedVehicle.data_saida ? new Date(selectedVehicle.data_saida).toLocaleString('pt-BR') : 'N/A'}`
+                        }
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">PLACA</p>
+                    <p className="font-medium text-foreground">{selectedVehicle.placa}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">MODELO</p>
+                    <p className="font-medium text-foreground">{selectedVehicle.modelo}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">MOTORISTA</p>
+                    <p className="font-medium text-foreground">{selectedVehicle.motorista}</p>
+                  </div>
+                   <div>
+                    <p className="text-muted-foreground">ORIGEM</p>
+                    <p className="font-medium text-foreground">{selectedVehicle.origem}</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 rounded-full bg-muted/20 flex items-center justify-center mx-auto mb-4">
+                  <Search className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-medium text-foreground">NENHUM REGISTRO ENCONTRADO</h3>
+                <p className="text-muted-foreground mt-2">
+                  Não encontramos nenhum histórico para a placa <span className="font-bold text-foreground">{searchedPlate}</span>.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setShowSearchDialog(false)} className="w-full sm:w-auto">
+              FECHAR
+            </Button>
+            {selectedVehicle && selectedVehicle.status === 'entrada' && (
+              <Button 
+                onClick={() => {
+                  setShowSearchDialog(false);
+                  handleExit(selectedVehicle);
+                }}
+                className="w-full sm:w-auto bg-destructive hover:bg-destructive/90 text-white"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                REGISTRAR SAÍDA
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Exit Modal */}
       {selectedVehicle && (
@@ -504,6 +693,23 @@ const Dashboard = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent className="w-[90%] sm:max-w-sm rounded-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tem certeza que deseja excluir?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. Isso excluirá permanentemente o veículo {vehicleToDelete?.placa} e todos os dados associados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowDeleteDialog(false)}>CANCELAR</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              EXCLUIR
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <ReportModal 
         isOpen={showReportModal} 

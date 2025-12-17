@@ -354,9 +354,6 @@ const Cadastro = () => {
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Button variant="ghost" onClick={() => navigate('/dashboard')} className="text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 gradient-primary rounded-xl flex items-center justify-center">
               <Car className="w-5 h-5 text-primary-foreground" />
@@ -365,6 +362,13 @@ const Cadastro = () => {
           </div>
         </div>
       </header>
+
+      <Button
+        onClick={() => navigate('/dashboard')}
+        className="fixed bottom-6 right-6 rounded-full w-12 h-12 shadow-lg z-50 gradient-primary text-primary-foreground"
+      >
+        <ArrowLeft className="w-6 h-6" />
+      </Button>
 
       <main className="container mx-auto px-4 py-6">
         <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl mx-auto">
@@ -565,15 +569,18 @@ const Cadastro = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  {fotos.map((foto, index) => (
-                    <PhotoUpload
-                      key={index}
-                      label={`FOTO ${index + 1}`}
-                      value={foto}
-                      onChange={(url) => handleFotoChange(index, url)}
-                      isCameraMode={isGlobalCameraMode}
-                    />
-                  ))}
+                  {fotos.map((foto, index) => {
+                    const labels = ['FRENTE', 'TRASEIRA', 'LATERAL DIREITA', 'LATERAL ESQUERDA'];
+                    return (
+                      <PhotoUpload
+                        key={index}
+                        label={labels[index]}
+                        value={foto}
+                        onChange={(url) => handleFotoChange(index, url)}
+                        isCameraMode={isGlobalCameraMode}
+                      />
+                    );
+                  })}
                 </div>
                 <PhotoUpload
                   label="FOTO DO CHASSI"

@@ -1,6 +1,6 @@
 import { VehicleEntry } from '@/types/vehicle';
 
-export const generatePDF = (vehicle: VehicleEntry) => {
+export const getPDFContent = (vehicle: VehicleEntry) => {
   const items = [];
   if (vehicle.chave_principal) items.push('CHAVE PRINCIPAL');
   if (vehicle.chave_reserva) items.push('CHAVE RESERVA');
@@ -9,7 +9,7 @@ export const generatePDF = (vehicle: VehicleEntry) => {
   if (vehicle.triangulo) items.push('TRIÂNGULO');
   if (vehicle.chave_roda) items.push('CHAVE DE RODA');
 
-  const content = `
+  return `
     <!DOCTYPE html>
     <html>
     <head>
@@ -31,8 +31,10 @@ export const generatePDF = (vehicle: VehicleEntry) => {
         .items { display: flex; flex-wrap: wrap; gap: 8px; }
         .item { background: #f3f4f6; padding: 4px 10px; border-radius: 4px; font-size: 12px; }
         .footer { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px; }
-        .photos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }
-        .photo { width: 100%; height: 150px; object-fit: cover; border: 1px solid #ddd; }
+        .photos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 10px; }
+        .photo-container { display: flex; flex-direction: column; }
+        .photo { width: 100%; height: 150px; object-fit: cover; border: 1px solid #ddd; border-radius: 4px; }
+        .photo-label { font-size: 11px; font-weight: bold; margin-bottom: 4px; color: #444; text-transform: uppercase; }
       </style>
     </head>
     <body>
@@ -76,7 +78,15 @@ export const generatePDF = (vehicle: VehicleEntry) => {
       <div class="section">
         <h2>FOTOS DO VEÍCULO</h2>
         <div class="photos">
-          ${vehicle.fotos.map((foto, index) => `<img src="${foto}" alt="FOTO ${index + 1}" class="photo" />`).join('')}
+          ${vehicle.fotos.map((foto, index) => {
+            const labels = ['FRENTE', 'TRASEIRA', 'LATERAL DIREITA', 'LATERAL ESQUERDA'];
+            return `
+              <div class="photo-container">
+                <div class="photo-label">${labels[index] || `FOTO ${index + 1}`}</div>
+                <img src="${foto}" alt="${labels[index] || `FOTO ${index + 1}`}" class="photo" />
+              </div>
+            `;
+          }).join('')}
         </div>
       </div>
       ` : ''}
@@ -106,7 +116,10 @@ export const generatePDF = (vehicle: VehicleEntry) => {
     </body>
     </html>
   `;
+};
 
+export const generatePDF = (vehicle: VehicleEntry) => {
+  const content = getPDFContent(vehicle);
   const printWindow = window.open('', '_blank');
   if (printWindow) {
     printWindow.document.write(content);
