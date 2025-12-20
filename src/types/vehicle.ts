@@ -4,6 +4,7 @@ export interface VehicleEntry {
   placa: string;
   modelo: string;
   origem: string;
+  tipo_entrada?: string;
   guincho: string;
   placa_guincho?: string;
   motorista: string;
@@ -26,6 +27,8 @@ export interface VehicleEntry {
   solicitante?: string;
   data_saida?: string;
   created_by_matricula?: string;
+  operator_name?: string;
+  exit_operator_name?: string;
 }
 
 export interface PhoneNumber {

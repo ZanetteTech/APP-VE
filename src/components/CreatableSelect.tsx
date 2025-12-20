@@ -37,17 +37,17 @@ const CreatableSelect = React.forwardRef<HTMLButtonElement | HTMLInputElement, C
     const [open, setOpen] = React.useState(false);
     const [inputValue, setInputValue] = React.useState("");
 
-    if (options.length === 0) {
-      return (
-        <Input
-          ref={ref as React.Ref<HTMLInputElement>}
-          value={value}
-          onChange={(e) => onChange(e.target.value.toUpperCase())}
-          placeholder={placeholder}
-          className={cn("bg-input border-border text-foreground placeholder:text-muted-foreground", className)}
-        />
-      );
-    }
+    // if (options.length === 0) {
+    //   return (
+    //     <Input
+    //       ref={ref as React.Ref<HTMLInputElement>}
+    //       value={value}
+    //       onChange={(e) => onChange(e.target.value.toUpperCase())}
+    //       placeholder={placeholder}
+    //       className={cn("bg-input border-border text-foreground placeholder:text-muted-foreground", className)}
+    //     />
+    //   );
+    // }
 
     const handleSelect = (currentValue: string, data?: any) => {
       onChange(currentValue === value ? "" : currentValue, data);
@@ -86,12 +86,18 @@ const CreatableSelect = React.forwardRef<HTMLButtonElement | HTMLInputElement, C
             />
             <CommandList>
               <CommandEmpty>
-                <div 
-                  className="p-2 text-sm text-foreground cursor-pointer hover:bg-secondary rounded-sm"
-                  onClick={handleCreate}
-                >
-                  Usar "{inputValue.toUpperCase()}"
-                </div>
+                {inputValue ? (
+                  <div 
+                    className="p-2 text-sm text-foreground cursor-pointer hover:bg-secondary rounded-sm"
+                    onClick={handleCreate}
+                  >
+                    Usar "{inputValue.toUpperCase()}"
+                  </div>
+                ) : (
+                  <div className="p-2 text-sm text-muted-foreground text-center">
+                    Comece a digitar para criar...
+                  </div>
+                )}
               </CommandEmpty>
               <CommandGroup>
                 {options.map((option) => (

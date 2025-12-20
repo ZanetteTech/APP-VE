@@ -10,6 +10,8 @@ export interface GuinchoData {
 export const useHistoricalData = () => {
   const [guinchos, setGuinchos] = useState<GuinchoData[]>([]);
   const [destinos, setDestinos] = useState<string[]>([]);
+  const [origens, setOrigens] = useState<string[]>([]);
+  const [tiposEntrada, setTiposEntrada] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,15 +19,21 @@ export const useHistoricalData = () => {
       try {
         const { data, error } = await supabase
           .from('vehicles')
-          .select('guincho, placa_guincho, motorista, destino, empresa_guincho_saida, placa_guincho_saida, motorista_saida');
+          .select('guincho, placa_guincho, motorista, destino, empresa_guincho_saida, placa_guincho_saida, motorista_saida, origem, tipo_entrada');
 
         if (error) throw error;
 
         if (data) {
           // Process Guinchos (from both Entry and Exit fields)
           const guinchoMap = new Map<string, GuinchoData>();
+          const origemSet = new Set<string>();
 
           data.forEach(item => {
+            // Collect Origens
+            if (item.origem) {
+                origemSet.add(item.origem.toUpperCase());
+            }
+
             // Entry Guincho
             if (item.guincho) {
               const name = item.guincho.toUpperCase();
@@ -51,16 +59,25 @@ export const useHistoricalData = () => {
             }
           });
 
-          // Process Destinos
+          // Process Destinos and Tipos Entrada
           const destinoSet = new Set<string>();
+          const tipoEntradaSet = new Set<string>(['BATIDO 44', 'RECUPERADO 7X']);
+
           data.forEach(item => {
             if (item.destino) {
               destinoSet.add(item.destino.toUpperCase());
+            }
+            // @ts-ignore
+            if (item.tipo_entrada) {
+              // @ts-ignore
+              tipoEntradaSet.add(item.tipo_entrada.toUpperCase());
             }
           });
 
           setGuinchos(Array.from(guinchoMap.values()));
           setDestinos(Array.from(destinoSet).sort());
+          setOrigens(Array.from(origemSet).sort());
+          setTiposEntrada(Array.from(tipoEntradaSet).sort());
         }
       } catch (error) {
         console.error('Error fetching historical data:', error);
@@ -72,5 +89,5 @@ export const useHistoricalData = () => {
     fetchData();
   }, []);
 
-  return { guinchos, destinos, loading };
+  return { guinchos, destinos, origens, tiposEntrada, loading };
 };

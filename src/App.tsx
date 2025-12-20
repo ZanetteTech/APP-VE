@@ -51,10 +51,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    {/* <TooltipProvider> */}
+    <TooltipProvider>
       <VehicleProvider>
-        {/* <Toaster /> */}
-        {/* <Sonner /> */}
+        <Toaster />
+        <Sonner />
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Splash />} />
@@ -85,7 +85,7 @@ const App = () => (
           </Routes>
         </BrowserRouter>
       </VehicleProvider>
-    {/* </TooltipProvider> */}
+    </TooltipProvider>
   </QueryClientProvider>
 );
 

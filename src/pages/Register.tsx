@@ -5,10 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Car, UserPlus, ArrowLeft, X, Eye, EyeOff } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
 const Register = () => {
+  const [name, setName] = useState('');
   const [matricula, setMatricula] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -16,23 +17,28 @@ const Register = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { toast } = useToast();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!matricula || !password || !confirmPassword) {
-      toast({ title: 'PREENCHA TODOS OS CAMPOS', variant: 'destructive' });
+    if (!name || !matricula || !password || !confirmPassword) {
+      toast.error("Por favor, preencha todos os campos.", {
+        style: {
+          backgroundColor: '#ef4444',
+          color: 'white',
+          border: 'none'
+        }
+      });
       return;
     }
 
     if (password !== confirmPassword) {
-      toast({ title: 'AS SENHAS NÃO COINCIDEM', variant: 'destructive' });
+      toast.error('AS SENHAS NÃO COINCIDEM');
       return;
     }
 
     if (password.length < 6) {
-      toast({ title: 'A SENHA DEVE TER NO MÍNIMO 6 CARACTERES', variant: 'destructive' });
+      toast.error('A SENHA DEVE TER NO MÍNIMO 6 CARACTERES');
       return;
     }
 
@@ -48,15 +54,16 @@ const Register = () => {
           emailRedirectTo: `${window.location.origin}/`,
           data: {
             matricula: matricula.toUpperCase(),
+            name: name.toUpperCase(),
           }
         }
       });
 
       if (error) {
         if (error.message.includes('already registered')) {
-          toast({ title: 'MATRÍCULA JÁ CADASTRADA', variant: 'destructive' });
+          toast.error('MATRÍCULA JÁ CADASTRADA');
         } else {
-          toast({ title: error.message, variant: 'destructive' });
+          toast.error(error.message);
         }
         return;
       }
@@ -68,18 +75,19 @@ const Register = () => {
           .insert({
             user_id: data.user.id,
             matricula: matricula.toUpperCase(),
+            name: name.toUpperCase(),
           });
 
         if (profileError) {
           console.error('Profile error:', profileError);
         }
 
-        toast({ title: 'CADASTRO REALIZADO COM SUCESSO!' });
+        toast.success('CADASTRO REALIZADO COM SUCESSO!');
         navigate('/login');
       }
     } catch (error) {
       console.error('Register error:', error);
-      toast({ title: 'ERRO AO CADASTRAR', variant: 'destructive' });
+      toast.error('ERRO AO CADASTRAR');
     } finally {
       setLoading(false);
     }
@@ -107,6 +115,29 @@ const Register = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleRegister} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name" className="text-foreground">NOME COMPLETO</Label>
+              <div className="relative">
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="SEU NOME"
+                  value={name}
+                  onChange={(e) => setName(e.target.value.toUpperCase())}
+                  className="bg-input border-border text-foreground placeholder:text-muted-foreground uppercase pr-10"
+                />
+                {name && (
+                  <button
+                    type="button"
+                    onClick={() => setName('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="matricula" className="text-foreground">MATRÍCULA</Label>
               <div className="relative">

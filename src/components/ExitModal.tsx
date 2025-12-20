@@ -53,12 +53,20 @@ const ExitModal = ({ open, onClose, vehicle, onUpdate }: ExitModalProps) => {
     }
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      let operatorName = user?.user_metadata?.name;
+      if (user && !operatorName) {
+         const { data: profile } = await supabase.from('profiles').select('name').eq('user_id', user.id).single();
+         if (profile) operatorName = profile.name;
+      }
+
       const { error } = await supabase
         .from('vehicles')
         .update({
           ...exitData,
           status: 'saida',
           data_saida: new Date().toISOString(),
+          exit_operator_name: operatorName,
         })
         .eq('id', vehicle.id);
 

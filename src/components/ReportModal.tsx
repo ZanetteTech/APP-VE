@@ -86,13 +86,21 @@ export default function ReportModal({ isOpen, onClose, vehicles }: ReportModalPr
       }
 
       const doc = new jsPDF();
-
-      doc.setFontSize(18);
-      doc.text('Relatório de Veículos', 14, 22);
       
+      // Header Verde do Sistema
+      doc.setFillColor(26, 71, 42); // #1a472a
+      doc.rect(0, 0, 210, 30, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(18);
+      doc.text('Relatório de Veículos', 105, 15, { align: 'center' });
+      
+      doc.setFontSize(10);
+      doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 105, 23, { align: 'center' });
+
+      doc.setTextColor(0, 0, 0);
       doc.setFontSize(11);
-      doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 30);
-      doc.text(`Total de registros: ${data.length}`, 14, 36);
+      doc.text(`Total de registros: ${data.length}`, 14, 40);
 
       const tableBody = [];
       
@@ -108,6 +116,7 @@ export default function ReportModal({ isOpen, onClose, vehicles }: ReportModalPr
         tableBody.push([
             v.placa,
             v.modelo,
+            v.tipo_entrada || '-',
             v.created_by_matricula || 'N/A',
             new Date(v.data_entrada).toLocaleDateString('pt-BR'),
             v.status.toUpperCase(),
@@ -118,10 +127,10 @@ export default function ReportModal({ isOpen, onClose, vehicles }: ReportModalPr
 
       autoTable(doc, {
         startY: 44,
-        head: [['Placa', 'Modelo', 'Usuário', 'Data Entrada', 'Status', 'Data Saída', 'Foto']],
+        head: [['Placa', 'Modelo', 'Tipo', 'Usuário', 'Data Entrada', 'Status', 'Data Saída', 'Foto']],
         body: tableBody,
         didDrawCell: (data) => {
-            if (data.column.index === 6 && data.cell.section === 'body') {
+            if (data.column.index === 7 && data.cell.section === 'body') {
                  const base64Img = data.cell.raw as string;
                  if (base64Img) {
                      const dim = 20; 
@@ -138,13 +147,14 @@ export default function ReportModal({ isOpen, onClose, vehicles }: ReportModalPr
             }
         },
         didParseCell: (data) => {
-            if (data.column.index === 6 && data.cell.section === 'body') {
+            if (data.column.index === 7 && data.cell.section === 'body') {
                 data.cell.text = []; // Hide text content (base64 string)
             }
         },
         styles: { minCellHeight: 24, valign: 'middle', halign: 'center' },
+        headStyles: { fillColor: [26, 71, 42] },
         columnStyles: {
-            6: { cellWidth: 26 }
+            7: { cellWidth: 26 }
         }
       });
 
@@ -175,6 +185,7 @@ export default function ReportModal({ isOpen, onClose, vehicles }: ReportModalPr
       const excelData = data.map(v => ({
         'Placa': v.placa,
         'Modelo': v.modelo,
+        'Tipo Entrada': v.tipo_entrada || '-',
         'Lançado Por': v.created_by_matricula || 'N/A',
         'Origem': v.origem,
         'Motorista Entrada': v.motorista,

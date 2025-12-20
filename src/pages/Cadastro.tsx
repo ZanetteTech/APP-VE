@@ -19,12 +19,56 @@ const Cadastro = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const { toast } = useToast();
-  const { guinchos } = useHistoricalData();
+  const { guinchos, origens, tiposEntrada } = useHistoricalData();
   const placaRef = useRef<HTMLInputElement>(null);
+  const origemRef = useRef<HTMLButtonElement>(null);
+  const placaGuinchoRef = useRef<HTMLInputElement>(null);
   const isEditing = !!id;
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [currentStep, setCurrentStep] = useState(0);
+  const [carModels, setCarModels] = useState<{value: string, label: string}[]>([]);
+
+  useEffect(() => {
+    const fetchCarModels = async () => {
+      try {
+        const { data } = await supabase.from('car_models').select('*');
+        if (data) {
+          // console.log('Car models raw data:', data); // Debug
+          const uniqueModels = new Map();
+          
+          data.forEach((m: any) => {
+            // Prioriza a coluna 'model' conforme o SQL fornecido
+            let name = m.model || m.name || m.modelo || m.descricao || m.brand || m.marca;
+            
+            if (!name) {
+               // Fallback: procura qualquer coluna string que não pareça metadado
+               const stringKey = Object.keys(m).find(k => 
+                 typeof m[k] === 'string' && 
+                 !['id', 'created_at', 'updated_at', 'uuid'].includes(k)
+               );
+               if (stringKey) name = m[stringKey];
+            }
+
+            if (name) {
+              const finalName = name.trim(); // Remove espaços extras
+              if (finalName && !uniqueModels.has(finalName)) {
+                uniqueModels.set(finalName, { value: finalName, label: finalName });
+              }
+            }
+          });
+          
+          const models = Array.from(uniqueModels.values())
+            .sort((a, b) => a.label.localeCompare(b.label));
+          
+          setCarModels(models);
+        }
+      } catch (error) {
+        console.error('Error fetching car models:', error);
+      }
+    };
+    fetchCarModels();
+  }, []);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -57,6 +101,7 @@ const Cadastro = () => {
           placa: data.placa,
           modelo: data.modelo,
           origem: data.origem || '',
+          tipo_entrada: data.tipo_entrada || '',
           guincho: data.guincho || '',
           placa_guincho: data.placa_guincho || '',
           motorista: data.motorista || '',
@@ -100,6 +145,7 @@ const Cadastro = () => {
     placa: '',
     modelo: '',
     origem: '',
+    tipo_entrada: '',
     guincho: '',
     placa_guincho: '',
     motorista: '',
@@ -119,6 +165,63 @@ const Cadastro = () => {
 
   const handleChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleModelChange = async (value: string) => {
+    handleChange('modelo', value);
+    
+    if (!value) return;
+
+    // Check if model exists in current list (case insensitive)
+    const modelExists = carModels.some(m => m.value.toUpperCase() === value.toUpperCase());
+    
+    if (!modelExists) {
+        // Optimistically add to list
+        const newModel = { value: value.toUpperCase(), label: value.toUpperCase() };
+        setCarModels(prev => [...prev, newModel].sort((a, b) => a.label.localeCompare(b.label)));
+
+        // Save to DB
+        try {
+            const { error } = await supabase.from('car_models').insert({ model: value.toUpperCase() });
+            if (!error) {
+              toast({ 
+                title: 'NOVO MODELO CADASTRADO', 
+                description: `O modelo ${value.toUpperCase()} foi adicionado à lista.` 
+              });
+            }
+        } catch (error) {
+            console.error('Error saving new model:', error);
+        }
+    }
+    
+    // Focus Origem field
+    setTimeout(() => {
+        origemRef.current?.focus();
+    }, 100);
+  };
+
+  const handleGuinchoChange = (value: string, data?: any) => {
+    setFormData(prev => ({
+      ...prev,
+      guincho: value,
+      placa_guincho: data?.placa || prev.placa_guincho,
+      motorista: data?.motorista || prev.motorista
+    }));
+
+    if (!value) return;
+
+    const guinchoExists = guinchos.some(g => g.name.toUpperCase() === value.toUpperCase());
+    
+    if (!guinchoExists) {
+        toast({ 
+          title: 'NOVO GUINCHO IDENTIFICADO', 
+          description: `O guincho ${value.toUpperCase()} será registrado ao salvar.` 
+        });
+    }
+
+    setTimeout(() => {
+        placaGuinchoRef.current?.focus(); // Assuming placaGuinchoRef is attached to MaskedInput wrapper or input
+    }, 100);
   };
 
   const handleFotoChange = (index: number, value: string) => {
@@ -234,6 +337,13 @@ const Cadastro = () => {
         return;
       }
 
+      // Fetch user name for operator_name
+      let operatorName = user.user_metadata?.name;
+      if (!operatorName) {
+         const { data: profile } = await supabase.from('profiles').select('name').eq('user_id', user.id).single();
+         if (profile) operatorName = profile.name;
+      }
+
       // Check for duplicate placa again to be safe
       let duplicateQuery = supabase
         .from('vehicles')
@@ -269,6 +379,7 @@ const Cadastro = () => {
             placa: formData.placa,
             modelo: formData.modelo,
             origem: formData.origem,
+            tipo_entrada: formData.tipo_entrada,
             guincho: formData.guincho,
             placa_guincho: formData.placa_guincho || null,
             motorista: formData.motorista,
@@ -292,9 +403,11 @@ const Cadastro = () => {
           .from('vehicles')
           .insert({
             user_id: user.id,
+            operator_name: operatorName,
             placa: formData.placa,
             modelo: formData.modelo,
             origem: formData.origem,
+            tipo_entrada: formData.tipo_entrada,
             guincho: formData.guincho,
             placa_guincho: formData.placa_guincho || null,
             motorista: formData.motorista,
@@ -393,22 +506,25 @@ const Cadastro = () => {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-foreground">MODELO *</Label>
-                  <UppercaseInput
-                    placeholder="EX: HONDA CIVIC"
+                  <CreatableSelect
+                    options={carModels}
                     value={formData.modelo}
-                    onChange={(e) => handleChange('modelo', e.target.value)}
-                    className="bg-input border-border text-foreground placeholder:text-muted-foreground"
+                    onChange={(value) => handleModelChange(value)}
+                    placeholder="SELECIONE OU DIGITE NOVO MODELO"
+                    className="uppercase"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-foreground">ORIGEM *</Label>
-                  <UppercaseInput
-                    placeholder="EX: SÃO PAULO"
+                  <CreatableSelect
+                    ref={origemRef}
+                    options={origens.map(o => ({ value: o, label: o }))}
                     value={formData.origem}
-                    onChange={(e) => handleChange('origem', e.target.value)}
-                    className="bg-input border-border text-foreground placeholder:text-muted-foreground"
+                    onChange={(value) => handleChange('origem', value)}
+                    placeholder="SELECIONE OU DIGITE A ORIGEM"
+                    className="uppercase"
                   />
                 </div>
                 <div className="space-y-2">
@@ -416,14 +532,7 @@ const Cadastro = () => {
                   <CreatableSelect
                     options={guinchos.map(g => ({ value: g.name, label: g.name, data: g }))}
                     value={formData.guincho}
-                    onChange={(val, data) => {
-                      setFormData(prev => ({
-                        ...prev,
-                        guincho: val,
-                        placa_guincho: data?.placa || prev.placa_guincho,
-                        motorista: data?.motorista || prev.motorista
-                      }))
-                    }}
+                    onChange={handleGuinchoChange}
                     placeholder="SELECIONE OU DIGITE O GUINCHO"
                   />
                 </div>
@@ -432,6 +541,7 @@ const Cadastro = () => {
                 <div className="space-y-2">
                   <Label className="text-foreground">PLACA DO GUINCHO</Label>
                   <MaskedInput
+                    ref={placaGuinchoRef}
                     mask="placa"
                     placeholder="ABC-1234"
                     value={formData.placa_guincho}
@@ -462,6 +572,27 @@ const Cadastro = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Tipo de Entrada */}
+          {(!isMobile || isEditing || currentStep >= 1) && (
+            <Card className="glass-card animate-fade-in mb-4" style={{ animationDelay: '0.05s' }}>
+              <CardHeader>
+                <CardTitle className="text-foreground">DADOS DE ENTRADA</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <Label className="text-foreground">TIPO DE ENTRADA</Label>
+                  <CreatableSelect
+                    options={tiposEntrada.map(t => ({ value: t, label: t }))}
+                    value={formData.tipo_entrada}
+                    onChange={(value) => handleChange('tipo_entrada', value)}
+                    placeholder="SELECIONE OU DIGITE O TIPO"
+                    className="uppercase"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Itens */}
           {(!isMobile || isEditing || currentStep >= 1) && (

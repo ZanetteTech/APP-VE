@@ -21,19 +21,20 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Car, Plus, Search, LogOut, Phone, ArrowRightLeft, FileText, MessageSquare, ArrowLeft, Share2, ClipboardList, Menu } from 'lucide-react';
+import { Car, Plus, Search, LogOut, Phone, ArrowRightLeft, FileText, MessageSquare, ArrowLeft, Share2, ClipboardList, Menu, ExternalLink, BarChart3 } from 'lucide-react';
 import { VehicleEntry } from '@/types/vehicle';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import VehicleCard from '@/components/VehicleCard';
 import ExitModal from '@/components/ExitModal';
 import PhoneManager from '@/components/PhoneManager';
 import ReportModal from '@/components/ReportModal';
+import BalanceModal from '@/components/BalanceModal';
+import ExternalLinkModal from '@/components/ExternalLinkModal';
 import { MaskedInput } from '@/components/MaskedInput';
 import { supabase } from '@/integrations/supabase/client';
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { toast } = useToast();
   const [searchPlaca, setSearchPlaca] = useState('');
   const [vehicles, setVehicles] = useState<VehicleEntry[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleEntry | null>(null);
@@ -41,13 +42,19 @@ const Dashboard = () => {
   const [showPhoneManager, setShowPhoneManager] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showBalanceModal, setShowBalanceModal] = useState(false);
+  const [showExternalLinkModal, setShowExternalLinkModal] = useState(false);
   const [whatsAppModalStep, setWhatsAppModalStep] = useState<'type-selection' | 'phone-selection'>('type-selection');
   const [whatsAppVehicle, setWhatsAppVehicle] = useState<VehicleEntry | null>(null);
   const [phoneNumbers, setPhoneNumbers] = useState<{id: string; name: string; phone: string}[]>([]);
   const [userMatricula, setUserMatricula] = useState<string>('');
+  const [userName, setUserName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [vehicleToDelete, setVehicleToDelete] = useState<VehicleEntry | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [vehicleToRevert, setVehicleToRevert] = useState<VehicleEntry | null>(null);
+  const [showRevertDialog, setShowRevertDialog] = useState(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [showSearchDialog, setShowSearchDialog] = useState(false);
   const [searchedPlate, setSearchedPlate] = useState('');
 
@@ -60,18 +67,23 @@ const Dashboard = () => {
       }
 
       let matricula = user.user_metadata?.matricula;
+      let name = user.user_metadata?.name;
 
-      if (!matricula) {
+      if (!matricula || !name) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('matricula')
+          .select('matricula, name')
           .eq('user_id', user.id)
           .single();
         
-        if (profile) matricula = profile.matricula;
+        if (profile) {
+          matricula = matricula || profile.matricula;
+          name = name || profile.name;
+        }
       }
 
       if (matricula) setUserMatricula(matricula);
+      if (name) setUserName(name);
 
       const { data: vehiclesData, error } = await supabase
         .from('vehicles')
@@ -104,7 +116,7 @@ const Dashboard = () => {
       setVehicles(vehiclesWithPhotos);
     } catch (error) {
       console.error('Error loading vehicles:', error);
-      toast({ title: 'ERRO AO CARREGAR VEÍCULOS', variant: 'destructive' });
+      toast.error('ERRO AO CARREGAR VEÍCULOS');
     } finally {
       setLoading(false);
     }
@@ -144,7 +156,11 @@ const Dashboard = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    setShowLogoutDialog(true);
+  };
+
+  const confirmLogout = async () => {
     await supabase.auth.signOut();
     navigate('/login');
   };
@@ -174,20 +190,12 @@ const Dashboard = () => {
 
       if (error) throw error;
 
-      toast({
-        title: "VEÍCULO EXCLUÍDO",
-        description: "O veículo foi removido com sucesso.",
-        className: "bg-success text-success-foreground border-success",
-      });
+      toast.success("VEÍCULO EXCLUÍDO: O veículo foi removido com sucesso.");
       
       loadVehicles();
     } catch (error) {
       console.error('Error deleting vehicle:', error);
-      toast({
-        title: "ERRO AO EXCLUIR",
-        description: "Não foi possível excluir o veículo.",
-        variant: "destructive",
-      });
+      toast.error("ERRO AO EXCLUIR: Não foi possível excluir o veículo.");
     } finally {
       setShowDeleteDialog(false);
       setVehicleToDelete(null);
@@ -195,7 +203,16 @@ const Dashboard = () => {
   };
 
   const handleSearch = () => {
-    if (!searchPlaca) return;
+    if (!searchPlaca) {
+      toast.error("Por favor, digite a placa para pesquisar.", {
+        style: {
+          backgroundColor: '#ef4444',
+          color: 'white',
+          border: 'none'
+        }
+      });
+      return;
+    }
     
     setSearchedPlate(searchPlaca.toUpperCase());
     
@@ -208,7 +225,14 @@ const Dashboard = () => {
     setSearchPlaca('');
   };
 
-  const handleRevert = async (vehicle: VehicleEntry) => {
+  const handleRevert = (vehicle: VehicleEntry) => {
+    setVehicleToRevert(vehicle);
+    setShowRevertDialog(true);
+  };
+
+  const confirmRevert = async () => {
+    if (!vehicleToRevert) return;
+
     try {
       setLoading(true);
       const { error } = await supabase
@@ -222,17 +246,19 @@ const Dashboard = () => {
           motorista_saida: null,
           solicitante: null,
         })
-        .eq('id', vehicle.id);
+        .eq('id', vehicleToRevert.id);
 
       if (error) throw error;
 
-      toast({ title: 'VEÍCULO REVERTIDO PARA O PÁTIO', className: 'bg-green-500 text-white' });
+      toast.success('VEÍCULO REVERTIDO PARA O PÁTIO');
       await loadVehicles();
     } catch (error) {
       console.error('Error reverting vehicle:', error);
-      toast({ title: 'ERRO AO REVERTER VEÍCULO', variant: 'destructive' });
+      toast.error('ERRO AO REVERTER VEÍCULO');
     } finally {
       setLoading(false);
+      setShowRevertDialog(false);
+      setVehicleToRevert(null);
     }
   };
 
@@ -257,6 +283,9 @@ const Dashboard = () => {
     let message = `*REGISTRO DE VEÍCULO*\n\n`;
     message += `🚗 *PLACA:* ${whatsAppVehicle.placa}\n`;
     message += `📋 *MODELO:* ${whatsAppVehicle.modelo}\n`;
+    if (whatsAppVehicle.tipo_entrada) {
+      message += `🔖 *TIPO:* ${whatsAppVehicle.tipo_entrada}\n`;
+    }
     message += `📍 *ORIGEM:* ${whatsAppVehicle.origem}\n`;
     message += `🚚 *GUINCHO:* ${whatsAppVehicle.guincho}\n`;
     if (whatsAppVehicle.placa_guincho) {
@@ -315,16 +344,66 @@ const Dashboard = () => {
             </div>
             <div>
               <h1 className="text-xl font-bold text-foreground leading-none">SISTEMA DE PÁTIO</h1>
-              {userMatricula && <p className="text-xs text-muted-foreground mt-1">OLÁ, {userMatricula}</p>}
+              {userMatricula && <p className="text-xs text-muted-foreground mt-1">OLÁ, {userName ? `${userName} - ` : ''}{userMatricula}</p>}
             </div>
           </div>
           <div className="flex items-center gap-2">
             {/* Desktop Actions */}
             <div className="hidden md:flex items-center gap-2">
-              <Button variant="ghost" onClick={() => setShowPhoneManager(true)} className="text-muted-foreground hover:text-foreground">
-                <Phone className="w-4 h-4" />
-              </Button>
-              <Button variant="ghost" onClick={handleLogout} className="text-muted-foreground hover:bg-destructive hover:text-white">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2 border-primary/20 hover:bg-primary/10">
+                    <Menu className="w-4 h-4" />
+                    MENU
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 p-2 gap-2 flex flex-col">
+                  <DropdownMenuItem 
+                    onClick={() => navigate('/cadastro')} 
+                    className="cursor-pointer py-2.5"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    NOVA ENTRADA
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => setShowExternalLinkModal(true)} 
+                    className="cursor-pointer py-2.5"
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    INCLUSÃO PLACAS
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => setShowReportModal(true)} 
+                    className="cursor-pointer py-2.5"
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    RELATÓRIOS
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => setShowBalanceModal(true)} 
+                    className="cursor-pointer py-2.5"
+                  >
+                    <BarChart3 className="w-4 h-4 mr-2" />
+                    BALANÇO MENSAL
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => navigate('/inventory')} 
+                    className="cursor-pointer py-2.5"
+                  >
+                    <ClipboardList className="w-4 h-4 mr-2" />
+                    INVENTÁRIO
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => setShowPhoneManager(true)} 
+                    className="cursor-pointer py-2.5"
+                  >
+                    <Phone className="w-4 h-4 mr-2" />
+                    TELEFONE
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <Button variant="destructive" onClick={handleLogout} className="hover:bg-destructive/80">
                 <LogOut className="w-4 h-4 mr-2" />
                 SAIR
               </Button>
@@ -343,9 +422,17 @@ const Dashboard = () => {
                     <Plus className="w-4 h-4 mr-2" />
                     NOVA ENTRADA
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowExternalLinkModal(true)} className="py-3">
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    INCLUSÃO PLACAS
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setShowReportModal(true)} className="py-3">
                     <FileText className="w-4 h-4 mr-2" />
                     RELATÓRIOS
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowBalanceModal(true)} className="py-3">
+                    <BarChart3 className="w-4 h-4 mr-2" />
+                    BALANÇO MENSAL
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate('/inventory')} className="py-3">
                     <ClipboardList className="w-4 h-4 mr-2" />
@@ -406,44 +493,34 @@ const Dashboard = () => {
         </div>
 
         {/* Actions */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1 flex gap-2">
-            <MaskedInput
-              mask="placa"
-              placeholder="BUSCAR PLACA"
-              value={searchPlaca}
-              onChange={setSearchPlaca}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              className="bg-input border-border text-foreground placeholder:text-muted-foreground"
-            />
-            <Button onClick={handleSearch} className="gradient-primary text-primary-foreground">
-              <Search className="w-4 h-4" />
-            </Button>
-          </div>
-          <div className="hidden sm:flex gap-2">
-            <Button onClick={() => setShowReportModal(true)} className="gradient-primary text-primary-foreground px-4">
-              <FileText className="w-4 h-4 mr-2" />
-              <span>RELATÓRIO</span>
-            </Button>
-            <Button onClick={() => navigate('/inventory')} className="gradient-primary text-primary-foreground px-4">
-              <ClipboardList className="w-4 h-4 mr-2" />
-              <span>INVENTÁRIO</span>
-            </Button>
-            <Button onClick={() => navigate('/cadastro')} className="gradient-primary text-primary-foreground px-4">
-              <Plus className="w-4 h-4 mr-2" />
-              <span>NOVA ENTRADA</span>
-            </Button>
-          </div>
+        <div className="flex gap-2">
+          <MaskedInput
+            mask="placa"
+            placeholder="BUSCAR PLACA"
+            value={searchPlaca}
+            onChange={setSearchPlaca}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            className="bg-input border-border text-foreground placeholder:text-muted-foreground flex-1"
+          />
+          <Button onClick={handleSearch} className="gradient-primary text-primary-foreground">
+            <Search className="w-4 h-4" />
+          </Button>
         </div>
 
         {/* Tabs */}
         <Tabs defaultValue="registros" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 bg-secondary">
-            <TabsTrigger value="registros" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              REGISTROS ({entradas.length})
+          <TabsList className="grid w-full grid-cols-2 bg-secondary h-auto p-1">
+            <TabsTrigger value="registros" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2 md:py-1.5 h-auto">
+              <span className="mr-2 truncate text-xs md:text-sm">REGISTROS</span>
+              <span className="bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded-full text-xs font-bold min-w-[1.5rem] flex items-center justify-center">
+                {entradas.length}
+              </span>
             </TabsTrigger>
-            <TabsTrigger value="saidas" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              SAÍDAS ({saidas.length})
+            <TabsTrigger value="saidas" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2 md:py-1.5 h-auto">
+              <span className="mr-2 truncate text-xs md:text-sm">SAÍDAS</span>
+              <span className="bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded-full text-xs font-bold min-w-[1.5rem] flex items-center justify-center">
+                {saidas.length}
+              </span>
             </TabsTrigger>
           </TabsList>
           
@@ -463,7 +540,7 @@ const Dashboard = () => {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid gap-4">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {entradas.map((vehicle) => (
                     <VehicleCard 
                       key={vehicle.id} 
@@ -495,7 +572,7 @@ const Dashboard = () => {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid gap-4">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {saidas.map((vehicle) => (
                     <VehicleCard 
                       key={vehicle.id} 
@@ -711,10 +788,55 @@ const Dashboard = () => {
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
+        <AlertDialogContent className="w-[90%] sm:max-w-sm rounded-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deseja realmente sair?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você será desconectado do sistema.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowLogoutDialog(false)}>CANCELAR</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmLogout}>
+              SAIR
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showRevertDialog} onOpenChange={setShowRevertDialog}>
+        <AlertDialogContent className="w-[90%] sm:max-w-sm rounded-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deseja realmente reverter?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O veículo {vehicleToRevert?.placa} voltará para o status de ENTRADA (NO PÁTIO). Todos os dados de saída serão apagados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowRevertDialog(false)}>CANCELAR</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRevert}>
+              REVERTER
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <ReportModal 
         isOpen={showReportModal} 
         onClose={() => setShowReportModal(false)} 
         vehicles={vehicles} 
+      />
+
+      <BalanceModal 
+        isOpen={showBalanceModal} 
+        onClose={() => setShowBalanceModal(false)} 
+        vehicles={vehicles} 
+      />
+
+      <ExternalLinkModal 
+        isOpen={showExternalLinkModal} 
+        onClose={() => setShowExternalLinkModal(false)} 
       />
     </div>
   );

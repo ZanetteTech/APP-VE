@@ -17,12 +17,21 @@ export const getPDFContent = (vehicle: VehicleEntry) => {
       <title>RELATÓRIO - ${vehicle.placa}</title>
       <style>
         body { font-family: Arial, sans-serif; padding: 40px; color: #333; }
-        .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #1a472a; padding-bottom: 20px; }
-        .header h1 { color: #1a472a; margin: 0; }
-        .header p { color: #666; margin-top: 5px; }
+        .header { text-align: center; margin-bottom: 20px; background-color: #1a472a; padding: 15px 0; color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .header h1 { color: white; margin: 0; font-size: 24px; }
+        .header p { color: #e5e5e5; margin-top: 5px; font-size: 14px; }
         .section { margin-bottom: 25px; }
-        .section h2 { color: #1a472a; font-size: 16px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
-        .row { display: flex; margin-bottom: 8px; }
+        .section h2 { 
+          background-color: #1a472a; 
+          color: white; 
+          font-size: 16px; 
+          padding: 8px 10px; 
+          border-radius: 4px; 
+          margin-bottom: 15px;
+          text-transform: uppercase;
+          font-weight: bold;
+        }
+        .row { display: flex; margin-bottom: 8px; padding: 0 10px; }
         .label { font-weight: bold; width: 180px; color: #555; }
         .value { flex: 1; }
         .status { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; }
@@ -48,6 +57,7 @@ export const getPDFContent = (vehicle: VehicleEntry) => {
         <div class="row"><span class="label">PLACA:</span><span class="value">${vehicle.placa}</span></div>
         <div class="row"><span class="label">MODELO:</span><span class="value">${vehicle.modelo}</span></div>
         <div class="row"><span class="label">ORIGEM:</span><span class="value">${vehicle.origem}</span></div>
+        <div class="row"><span class="label">TIPO DE ENTRADA:</span><span class="value">${vehicle.tipo_entrada || '-'}</span></div>
         <div class="row"><span class="label">LANÇADO POR:</span><span class="value">${vehicle.created_by_matricula || 'N/A'}</span></div>
         <div class="row"><span class="label">STATUS:</span><span class="value"><span class="status ${vehicle.status === 'entrada' ? 'status-entrada' : 'status-saida'}">${vehicle.status === 'entrada' ? 'NO PÁTIO' : 'SAÍDA REALIZADA'}</span></span></div>
       </div>
@@ -58,6 +68,7 @@ export const getPDFContent = (vehicle: VehicleEntry) => {
         ${vehicle.placa_guincho ? `<div class="row"><span class="label">PLACA GUINCHO:</span><span class="value">${vehicle.placa_guincho}</span></div>` : ''}
         <div class="row"><span class="label">MOTORISTA:</span><span class="value">${vehicle.motorista}</span></div>
         <div class="row"><span class="label">DATA:</span><span class="value">${new Date(vehicle.data_entrada).toLocaleString('pt-BR')}</span></div>
+        <div class="row"><span class="label">ENTRADA POR:</span><span class="value">${vehicle.operator_name || '-'}</span></div>
       </div>
 
       <div class="section">
@@ -107,6 +118,7 @@ export const getPDFContent = (vehicle: VehicleEntry) => {
         <div class="row"><span class="label">MOTORISTA:</span><span class="value">${vehicle.motorista_saida}</span></div>
         <div class="row"><span class="label">SOLICITANTE:</span><span class="value">${vehicle.solicitante}</span></div>
         <div class="row"><span class="label">DATA:</span><span class="value">${new Date(vehicle.data_saida!).toLocaleString('pt-BR')}</span></div>
+        <div class="row"><span class="label">SAÍDA POR:</span><span class="value">${vehicle.exit_operator_name || '-'}</span></div>
       </div>
       ` : ''}
 

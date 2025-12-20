@@ -291,14 +291,21 @@ const Inventory = () => {
       if (error) throw error;
 
       const doc = new jsPDF();
-
+      
       // Header
+      doc.setFillColor(26, 71, 42); // System Green
+      doc.rect(0, 0, 210, 30, 'F');
+
+      // Header Text
+      doc.setTextColor(255, 255, 255);
       doc.setFontSize(20);
-      doc.text('RELATÓRIO DE INVENTÁRIO', 105, 20, { align: 'center' });
+      doc.text('RELATÓRIO DE INVENTÁRIO', 105, 15, { align: 'center' });
       
       doc.setFontSize(12);
-      doc.text(`Data: ${new Date(session.created_at).toLocaleDateString('pt-BR')} às ${new Date(session.created_at).toLocaleTimeString('pt-BR')}`, 14, 30);
-      doc.text(`Total de Veículos: ${session.total_vehicles}`, 14, 37);
+      doc.text(`Data: ${new Date(session.created_at).toLocaleDateString('pt-BR')} às ${new Date(session.created_at).toLocaleTimeString('pt-BR')}`, 105, 23, { align: 'center' });
+      
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Total de Veículos: ${session.total_vehicles}`, 14, 40);
 
       const tableData = items?.map((item: any) => [
         item.placa,
@@ -307,11 +314,11 @@ const Inventory = () => {
       ]) || [];
 
       autoTable(doc, {
-        startY: 45,
+        startY: 50,
         head: [['PLACA', 'MODELO', 'HORA']],
         body: tableData,
         theme: 'grid',
-        headStyles: { fillColor: [0, 0, 0] }, // Black header
+        headStyles: { fillColor: [26, 71, 42] }, // System Green header
       });
 
       doc.save(`inventario-${new Date(session.created_at).toISOString().split('T')[0]}.pdf`);
@@ -325,12 +332,20 @@ const Inventory = () => {
     try {
       const doc = new jsPDF();
       
+      // Header
+      doc.setFillColor(26, 71, 42); // System Green
+      doc.rect(0, 0, 210, 30, 'F');
+
+      // Header Text
+      doc.setTextColor(255, 255, 255);
       doc.setFontSize(20);
-      doc.text('RELATÓRIO DE INVENTÁRIO COMPLETO', 105, 20, { align: 'center' });
+      doc.text('RELATÓRIO DE INVENTÁRIO COMPLETO', 105, 15, { align: 'center' });
       
       doc.setFontSize(12);
-      doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`, 14, 30);
-      doc.text(`Total de Veículos: ${scannedVehicles.length}`, 14, 37);
+      doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`, 105, 23, { align: 'center' });
+      
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Total de Veículos: ${scannedVehicles.length}`, 14, 40);
 
       // Preload images
       const tableBody = await Promise.all(scannedVehicles.map(async (vehicle) => {
@@ -352,11 +367,11 @@ const Inventory = () => {
       }));
 
       autoTable(doc, {
-        startY: 45,
+        startY: 50,
         head: [['PLACA', 'MODELO', 'FOTO']],
         body: tableBody,
         theme: 'grid',
-        headStyles: { fillColor: [0, 0, 0] },
+        headStyles: { fillColor: [26, 71, 42] },
         bodyStyles: { minCellHeight: 25, valign: 'middle' },
         columnStyles: {
             0: { cellWidth: 40 },
@@ -475,7 +490,7 @@ const Inventory = () => {
                       value={placaInput}
                       onChange={setPlacaInput}
                       onKeyDown={(e) => e.key === 'Enter' && checkAndAddPlaca()}
-                      className="bg-input border-border text-foreground text-lg uppercase h-12 w-full"
+                      className="bg-input border-border text-foreground text-3xl font-bold uppercase h-20 w-full text-center"
                       disabled={loading}
                     />
                   </div>

@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Car, LogIn, Eye, EyeOff } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
 const Login = () => {
@@ -18,7 +18,6 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { toast } = useToast();
 
   useEffect(() => {
     const checkUser = async () => {
@@ -68,7 +67,13 @@ const Login = () => {
     e.preventDefault();
     
     if (!matricula || !password) {
-      toast({ title: 'PREENCHA TODOS OS CAMPOS', variant: 'destructive' });
+      toast.error("Por favor, preencha a matrícula e a senha.", {
+        style: {
+          backgroundColor: '#ef4444',
+          color: 'white',
+          border: 'none'
+        }
+      });
       return;
     }
 
@@ -83,18 +88,18 @@ const Login = () => {
 
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
-          toast({ title: 'MATRÍCULA OU SENHA INCORRETOS', variant: 'destructive' });
+          toast.error('MATRÍCULA OU SENHA INCORRETOS');
         } else {
-          toast({ title: error.message, variant: 'destructive' });
+          toast.error(error.message);
         }
         return;
       }
 
-      toast({ title: 'LOGIN REALIZADO COM SUCESSO!' });
+      toast.success('LOGIN REALIZADO COM SUCESSO!');
       navigate('/dashboard');
     } catch (error) {
       console.error('Login error:', error);
-      toast({ title: 'ERRO AO FAZER LOGIN', variant: 'destructive' });
+      toast.error('ERRO AO FAZER LOGIN');
     } finally {
       setLoading(false);
     }
