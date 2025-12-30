@@ -14,6 +14,15 @@ import PhotoUpload from '@/components/PhotoUpload';
 import { supabase } from '@/integrations/supabase/client';
 import CreatableSelect from '@/components/CreatableSelect';
 import { useHistoricalData } from '@/hooks/useHistoricalData';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const Cadastro = () => {
   const navigate = useNavigate();
@@ -162,6 +171,11 @@ const Cadastro = () => {
   const [fotoChassi, setFotoChassi] = useState('');
   const [loading, setLoading] = useState(false);
   const [isGlobalCameraMode, setIsGlobalCameraMode] = useState(false);
+  const [duplicateVehicleLoja, setDuplicateVehicleLoja] = useState<string | null>(null);
+  const [duplicateVehicleOperator, setDuplicateVehicleOperator] = useState<string | null>(null);
+  const [duplicateVehicleMatricula, setDuplicateVehicleMatricula] = useState<string | null>(null);
+  const [duplicateVehicleDate, setDuplicateVehicleDate] = useState<string | null>(null);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
 
   const handleChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -239,12 +253,27 @@ const Cadastro = () => {
   };
 
   const checkPlaca = async (placa: string) => {
-    if (!validatePlaca(placa)) return;
+    // Validação mínima de tamanho para evitar consultas desnecessárias
+    if (placa.length < 7) return;
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      // Não retorna se não tiver user, pois pode ser verificação offline ou apenas informativa, 
+      // mas para pegar "userLoja" precisamos do user. 
+      // O foco aqui é achar duplicidade.
+
+      let userLoja = '';
+      if (user) {
+        userLoja = user.user_metadata?.loja;
+        if (!userLoja) {
+          const { data: profile } = await supabase.from('profiles').select('loja').eq('user_id', user.id).single();
+          if (profile) userLoja = profile.loja;
+        }
+      }
+
       let query = supabase
         .from('vehicles')
-        .select('id')
+        .select('id, loja, operator_name, user_id, created_at')
         .eq('placa', placa)
         .eq('status', 'entrada');
 
@@ -260,13 +289,39 @@ const Cadastro = () => {
       }
 
       if (data) {
-        toast({
-          title: 'VEÍCULO JÁ ESTÁ NO PÁTIO',
-          description: `O veículo com placa ${placa} já consta como entrada.`,
-          variant: 'destructive',
-        });
-        handleChange('placa', '');
-        setTimeout(() => placaRef.current?.focus(), 100);
+        let operatorName = data.operator_name;
+        let operatorMatricula = '';
+        
+        // Buscar dados atualizados do perfil do usuário que cadastrou
+        let vehicleLoja = data.loja;
+        
+        if (data.user_id) {
+            const { data: profileData } = await supabase
+                .from('profiles')
+                .select('name, matricula, loja')
+                .eq('user_id', data.user_id)
+                .maybeSingle();
+            
+            if (profileData) {
+                operatorName = profileData.name || operatorName;
+                operatorMatricula = profileData.matricula || '';
+                if (!vehicleLoja) vehicleLoja = profileData.loja;
+            }
+        }
+
+        setDuplicateVehicleLoja(vehicleLoja || 'LOJA DESCONHECIDA');
+        setDuplicateVehicleOperator(operatorName || 'DESCONHECIDO');
+        setDuplicateVehicleMatricula(operatorMatricula);
+        
+        // Formatar data
+        if (data.created_at) {
+            const date = new Date(data.created_at);
+            setDuplicateVehicleDate(date.toLocaleString('pt-BR'));
+        } else {
+            setDuplicateVehicleDate(null);
+        }
+
+        setShowDuplicateModal(true);
       }
     } catch (error) {
       console.error('Error checking placa:', error);
@@ -337,17 +392,22 @@ const Cadastro = () => {
         return;
       }
 
-      // Fetch user name for operator_name
+      // Fetch user name for operator_name and loja
       let operatorName = user.user_metadata?.name;
-      if (!operatorName) {
-         const { data: profile } = await supabase.from('profiles').select('name').eq('user_id', user.id).single();
-         if (profile) operatorName = profile.name;
+      let loja = user.user_metadata?.loja;
+
+      if (!operatorName || !loja) {
+         const { data: profile } = await supabase.from('profiles').select('name, loja').eq('user_id', user.id).single();
+         if (profile) {
+            operatorName = operatorName || profile.name;
+            loja = loja || profile.loja;
+         }
       }
 
       // Check for duplicate placa again to be safe
       let duplicateQuery = supabase
         .from('vehicles')
-        .select('id')
+        .select('id, loja, operator_name')
         .eq('placa', formData.placa)
         .eq('status', 'entrada');
       
@@ -358,14 +418,10 @@ const Cadastro = () => {
       const { data: duplicate } = await duplicateQuery.maybeSingle();
 
       if (duplicate) {
-        toast({
-          title: 'VEÍCULO JÁ ESTÁ NO PÁTIO',
-          description: `O veículo com placa ${formData.placa} já consta como entrada.`,
-          variant: 'destructive',
-        });
+        setDuplicateVehicleLoja(duplicate.loja || loja || 'LOJA DESCONHECIDA');
+        setDuplicateVehicleOperator(duplicate.operator_name || 'DESCONHECIDO');
+        setShowDuplicateModal(true);
         setLoading(false);
-        handleChange('placa', '');
-        setTimeout(() => placaRef.current?.focus(), 100);
         return;
       }
 
@@ -376,6 +432,7 @@ const Cadastro = () => {
         const { error: updateError } = await supabase
           .from('vehicles')
           .update({
+            loja: loja,
             placa: formData.placa,
             modelo: formData.modelo,
             origem: formData.origem,
@@ -404,6 +461,7 @@ const Cadastro = () => {
           .insert({
             user_id: user.id,
             operator_name: operatorName,
+            loja: loja,
             placa: formData.placa,
             modelo: formData.modelo,
             origem: formData.origem,
@@ -487,8 +545,18 @@ const Cadastro = () => {
         <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl mx-auto">
           {/* Dados do Veículo */}
           <Card className="glass-card animate-fade-in" id="card-vehicle">
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
               <CardTitle className="text-foreground">DADOS DO VEÍCULO</CardTitle>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/dashboard')}
+                className="text-foreground border-border hover:bg-accent"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                VOLTAR
+              </Button>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -499,8 +567,12 @@ const Cadastro = () => {
                     mask="placa"
                     placeholder="ABC-1234"
                     value={formData.placa}
-                    onChange={(value) => handleChange('placa', value)}
-                    onBlur={() => checkPlaca(formData.placa)}
+                    onChange={(value) => {
+                      handleChange('placa', value);
+                      if (value.length >= 7) {
+                        checkPlaca(value);
+                      }
+                    }}
                     className="bg-input border-border text-foreground placeholder:text-muted-foreground"
                   />
                 </div>
@@ -736,6 +808,39 @@ const Cadastro = () => {
           )}
         </form>
       </main>
+
+      <AlertDialog open={showDuplicateModal} onOpenChange={setShowDuplicateModal}>
+        <AlertDialogContent className="bg-card border-border text-foreground">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive font-bold text-xl">VEÍCULO JÁ CADASTRADO</AlertDialogTitle>
+            <AlertDialogDescription className="text-foreground text-lg space-y-1">
+              <div>
+                A PLACA <span className="font-bold">{formData.placa}</span> JÁ ESTÁ CADASTRADA NA: <span className="font-bold text-primary">{duplicateVehicleLoja}</span>
+              </div>
+              <div>
+                POR: <span className="font-bold text-primary">{duplicateVehicleOperator} {duplicateVehicleMatricula && ` - ${duplicateVehicleMatricula}`}</span>
+              </div>
+              {duplicateVehicleDate && (
+                <div>
+                  DATA: <span className="font-bold text-primary">{duplicateVehicleDate}</span>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction 
+              onClick={() => {
+                setShowDuplicateModal(false);
+                handleChange('placa', '');
+                setTimeout(() => placaRef.current?.focus(), 100);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 font-bold"
+            >
+              ENTENDI
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

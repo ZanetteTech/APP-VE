@@ -1,16 +1,20 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Car, UserPlus, ArrowLeft, X, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
 const Register = () => {
+  const [role, setRole] = useState('CADASTRO');
   const [name, setName] = useState('');
   const [matricula, setMatricula] = useState('');
+  const [loja, setLoja] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -18,10 +22,24 @@ const Register = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  const handleRoleChange = (value: string) => {
+    setRole(value);
+    if (value === 'PESQUISA') {
+      // Focus on name input when switching to PESQUISA
+      setTimeout(() => {
+        const nameInput = document.getElementById('name');
+        if (nameInput) nameInput.focus();
+      }, 0);
+    }
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!name || !matricula || !password || !confirmPassword) {
+    // Skip validation for loja if role is PESQUISA
+    const isLojaValid = role === 'PESQUISA' ? true : !!loja;
+
+    if (!name || !matricula || !isLojaValid || !password || !confirmPassword) {
       toast.error("Por favor, preencha todos os campos.", {
         style: {
           backgroundColor: '#ef4444',
@@ -55,6 +73,8 @@ const Register = () => {
           data: {
             matricula: matricula.toUpperCase(),
             name: name.toUpperCase(),
+            loja: role === 'PESQUISA' ? 'TODAS' : loja.toUpperCase(),
+            role: role,
           }
         }
       });
@@ -69,21 +89,9 @@ const Register = () => {
       }
 
       if (data.user) {
-        // Create profile with matricula
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            user_id: data.user.id,
-            matricula: matricula.toUpperCase(),
-            name: name.toUpperCase(),
-          });
-
-        if (profileError) {
-          console.error('Profile error:', profileError);
-        }
-
+        // Profile is created automatically by database trigger
         toast.success('CADASTRO REALIZADO COM SUCESSO!');
-        navigate('/login');
+        navigate('/login', { state: { focusMatricula: true } });
       }
     } catch (error) {
       console.error('Register error:', error);
@@ -115,91 +123,136 @@ const Register = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleRegister} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name" className="text-foreground">NOME COMPLETO</Label>
-              <div className="relative">
-                <Input
-                  id="name"
-                  type="text"
-                  placeholder="SEU NOME"
-                  value={name}
-                  onChange={(e) => setName(e.target.value.toUpperCase())}
-                  className="bg-input border-border text-foreground placeholder:text-muted-foreground uppercase pr-10"
-                />
-                {name && (
-                  <button
-                    type="button"
-                    onClick={() => setName('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </div>
+            <ScrollArea className="h-[50vh] pr-4">
+              <div className="space-y-4 p-1">
+                <div className="space-y-2">
+                  <Label htmlFor="role" className="text-foreground">TIPO DE USUÁRIO</Label>
+                  <Select value={role} onValueChange={handleRoleChange}>
+                    <SelectTrigger className="bg-input border-border text-foreground">
+                      <SelectValue placeholder="SELECIONE O TIPO" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CADASTRO">USUÁRIO CADASTRO</SelectItem>
+                      <SelectItem value="PESQUISA">USUÁRIO PESQUISA</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="matricula" className="text-foreground">MATRÍCULA</Label>
-              <div className="relative">
-                <Input
-                  id="matricula"
-                  type="text"
-                  placeholder="SUA MATRÍCULA"
-                  value={matricula}
-                  onChange={(e) => setMatricula(e.target.value.toUpperCase())}
-                  className="bg-input border-border text-foreground placeholder:text-muted-foreground uppercase pr-10"
-                />
-                {matricula && (
-                  <button
-                    type="button"
-                    onClick={() => setMatricula('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                <div className="space-y-2">
+                  <Label htmlFor="name" className="text-foreground">NOME COMPLETO</Label>
+                  <div className="relative">
+                    <Input
+                      id="name"
+                      type="text"
+                      placeholder="SEU NOME"
+                      value={name}
+                      onChange={(e) => setName(e.target.value.toUpperCase())}
+                      className="bg-input border-border text-foreground placeholder:text-muted-foreground uppercase pr-10"
+                    />
+                    {name && (
+                      <button
+                        type="button"
+                        onClick={() => setName('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="matricula" className="text-foreground">MATRÍCULA</Label>
+                  <div className="relative">
+                    <Input
+                      id="matricula"
+                      type="text"
+                      placeholder="SUA MATRÍCULA"
+                      value={matricula}
+                      onChange={(e) => setMatricula(e.target.value.toUpperCase())}
+                      className="bg-input border-border text-foreground placeholder:text-muted-foreground uppercase pr-10"
+                    />
+                    {matricula && (
+                      <button
+                        type="button"
+                        onClick={() => setMatricula('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {role !== 'PESQUISA' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="loja" className="text-foreground">LOJA</Label>
+                    <div className="relative">
+                      <Input
+                        id="loja"
+                        type="text"
+                        placeholder="SUA LOJA"
+                        value={loja}
+                        onChange={(e) => setLoja(e.target.value.toUpperCase())}
+                        className="bg-input border-border text-foreground placeholder:text-muted-foreground uppercase pr-10"
+                      />
+                      {loja && (
+                        <button
+                          type="button"
+                          onClick={() => setLoja('')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-foreground">SENHA</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="bg-input border-border text-foreground placeholder:text-muted-foreground pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword" className="text-foreground">CONFIRMAR SENHA</Label>
+                  <div className="relative">
+                    <Input
+                      id="confirmPassword"
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="bg-input border-border text-foreground placeholder:text-muted-foreground pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-foreground">SENHA</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="bg-input border-border text-foreground placeholder:text-muted-foreground pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword" className="text-foreground">CONFIRMAR SENHA</Label>
-              <div className="relative">
-                <Input
-                  id="confirmPassword"
-                  type={showConfirmPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="bg-input border-border text-foreground placeholder:text-muted-foreground pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
+            </ScrollArea>
+            
             <Button 
               type="submit" 
               disabled={loading}

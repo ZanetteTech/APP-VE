@@ -74,143 +74,92 @@ export default function ReportModal({ isOpen, onClose, vehicles }: ReportModalPr
     }
   };
 
-  const exportPDF = async () => {
+  const exportPDF = () => {
     setIsGenerating(true);
     try {
-      const data = getFilteredData();
-
-      if (data.length === 0) {
-        setShowNoDataAlert(true);
-        setIsGenerating(false);
-        return;
-      }
-
-      const doc = new jsPDF();
+      const doc = new jsPDF('l', 'mm', 'a4');
+      const today = new Date().toLocaleDateString('pt-BR');
       
-      // Header Verde do Sistema
-      doc.setFillColor(26, 71, 42); // #1a472a
-      doc.rect(0, 0, 210, 30, 'F');
-
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(18);
-      doc.text('Relatório de Veículos', 105, 15, { align: 'center' });
-      
+      doc.setFontSize(16);
+      doc.text('Relatório de Veículos - CAR PATIO', 14, 15);
       doc.setFontSize(10);
-      doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 105, 23, { align: 'center' });
+      doc.text(`Gerado em: ${today}`, 14, 22);
 
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(11);
-      doc.text(`Total de registros: ${data.length}`, 14, 40);
-
-      const tableBody = [];
-      
-      for (const v of data) {
-        let photoBase64 = '';
-        // Prioritize foto_chassi, then first of fotos
-        const photoUrl = v.foto_chassi || (v.fotos && v.fotos.length > 0 ? v.fotos[0] : '');
-        
-        if (photoUrl) {
-          photoBase64 = await convertImageUrlToBase64(photoUrl);
-        }
-
-        tableBody.push([
-            v.placa,
-            v.modelo,
-            v.tipo_entrada || '-',
-            v.created_by_matricula || 'N/A',
-            new Date(v.data_entrada).toLocaleDateString('pt-BR'),
-            v.status.toUpperCase(),
-            v.status === 'saida' && v.data_saida ? new Date(v.data_saida).toLocaleDateString('pt-BR') : '-',
-            photoBase64
-        ]);
-      }
+      const tableData = getFilteredData().map(v => [
+        v.placa,
+        v.modelo,
+        v.origem,
+        new Date(v.data_entrada).toLocaleString('pt-BR'),
+        v.status === 'entrada' ? 'NO PÁTIO' : 'SAÍDA',
+        v.data_saida ? new Date(v.data_saida).toLocaleString('pt-BR') : '-',
+        v.destino || '-',
+        v.solicitante_nome || '-',
+        v.solicitacao_data_retirada ? new Date(v.solicitacao_data_retirada).toLocaleString('pt-BR') : '-',
+        v.solicitacao_destino || '-'
+      ]);
 
       autoTable(doc, {
-        startY: 44,
-        head: [['Placa', 'Modelo', 'Tipo', 'Usuário', 'Data Entrada', 'Status', 'Data Saída', 'Foto']],
-        body: tableBody,
-        didDrawCell: (data) => {
-            if (data.column.index === 7 && data.cell.section === 'body') {
-                 const base64Img = data.cell.raw as string;
-                 if (base64Img) {
-                     const dim = 20; 
-                     const x = data.cell.x + (data.cell.width - dim) / 2;
-                     const y = data.cell.y + (data.cell.height - dim) / 2;
-                     try {
-                        // Extract format from base64 string or default to JPEG
-                        const format = base64Img.includes('image/png') ? 'PNG' : 'JPEG';
-                        doc.addImage(base64Img, format, x, y, dim, dim);
-                     } catch (e) {
-                         console.error("Error adding image to PDF", e);
-                     }
-                 }
-            }
-        },
-        didParseCell: (data) => {
-            if (data.column.index === 7 && data.cell.section === 'body') {
-                data.cell.text = []; // Hide text content (base64 string)
-            }
-        },
-        styles: { minCellHeight: 24, valign: 'middle', halign: 'center' },
-        headStyles: { fillColor: [26, 71, 42] },
-        columnStyles: {
-            7: { cellWidth: 26 }
-        }
+        head: [['Placa', 'Modelo', 'Origem', 'Entrada', 'Status', 'Saída', 'Destino', 'Solicitante', 'Prev. Saída', 'Dest. Solicitado']],
+        body: tableData,
+        startY: 30,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [22, 163, 74] }
       });
 
-      doc.save('relatorio-veiculos.pdf');
-      toast({ title: "Sucesso", description: "Relatório PDF gerado com sucesso!" });
+      doc.save(`relatorio_veiculos_${today.replace(/\//g, '-')}.pdf`);
+      toast({
+        title: "Relatório gerado com sucesso!",
+        description: "O download do PDF começará em instantes.",
+      });
     } catch (error) {
-      console.error("Error generating PDF:", error);
-      toast({ 
-        title: "Erro ao gerar PDF", 
-        description: error instanceof Error ? error.message : "Erro desconhecido", 
-        variant: "destructive" 
+      console.error(error);
+      toast({
+        title: "Erro ao gerar relatório",
+        description: "Ocorreu um erro ao gerar o PDF.",
+        variant: "destructive"
       });
     } finally {
       setIsGenerating(false);
-      onClose();
     }
   };
 
   const exportExcel = () => {
+    setIsGenerating(true);
     try {
-      const data = getFilteredData();
-      
-      if (data.length === 0) {
-        setShowNoDataAlert(true);
-        return;
-      }
-
-      const excelData = data.map(v => ({
+      const data = getFilteredData().map(v => ({
         'Placa': v.placa,
         'Modelo': v.modelo,
-        'Tipo Entrada': v.tipo_entrada || '-',
-        'Lançado Por': v.created_by_matricula || 'N/A',
         'Origem': v.origem,
-        'Motorista Entrada': v.motorista,
         'Data Entrada': new Date(v.data_entrada).toLocaleString('pt-BR'),
-        'Status': v.status.toUpperCase(),
-        'Destino': v.destino || '-',
-        'Motorista Saída': v.motorista_saida || '-',
+        'Status': v.status === 'entrada' ? 'NO PÁTIO' : 'SAÍDA',
         'Data Saída': v.data_saida ? new Date(v.data_saida).toLocaleString('pt-BR') : '-',
-        'Foto URL': v.foto_chassi || (v.fotos && v.fotos.length > 0 ? v.fotos[0] : ''),
-        'Observações': v.observacoes
+        'Destino': v.destino || '-',
+        'Motorista Entrada': v.motorista,
+        'Guincho Entrada': v.guincho,
+        'Solicitante': v.solicitante_nome || '-',
+        'Previsão Retirada': v.solicitacao_data_retirada ? new Date(v.solicitacao_data_retirada).toLocaleString('pt-BR') : '-',
+        'Destino Solicitado': v.solicitacao_destino || '-'
       }));
 
-      const ws = XLSX.utils.json_to_sheet(excelData);
+      const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Veículos");
-      XLSX.writeFile(wb, "relatorio-veiculos.xlsx");
-      toast({ title: "Sucesso", description: "Relatório Excel gerado com sucesso!" });
-      onClose();
-    } catch (error) {
-      console.error("Error generating Excel:", error);
-      toast({ 
-        title: "Erro ao gerar Excel", 
-        description: error instanceof Error ? error.message : "Erro desconhecido", 
-        variant: "destructive" 
+      
+      XLSX.writeFile(wb, `relatorio_veiculos_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
+      
+      toast({
+        title: "Relatório gerado com sucesso!",
+        description: "O download do Excel começará em instantes.",
       });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Erro ao gerar relatório",
+        description: "Ocorreu um erro ao gerar o Excel.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsGenerating(false);
     }
   };
 

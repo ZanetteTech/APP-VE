@@ -5,10 +5,11 @@ interface MaskedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputEleme
   mask: 'placa' | 'phone';
   value: string;
   onChange: (value: string) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 }
 
 export const MaskedInput = React.forwardRef<HTMLInputElement, MaskedInputProps>(
-  ({ mask, value, onChange, className, ...props }, ref) => {
+  ({ mask, value, onChange, onKeyDown, className, ...props }, ref) => {
     const internalRef = useRef<HTMLInputElement>(null);
 
     useImperativeHandle(ref, () => internalRef.current as HTMLInputElement);
@@ -65,6 +66,7 @@ export const MaskedInput = React.forwardRef<HTMLInputElement, MaskedInputProps>(
         type="text"
         value={value}
         onChange={handleChange}
+        onKeyDown={onKeyDown}
         className={className}
         {...props}
       />

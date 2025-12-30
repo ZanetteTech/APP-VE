@@ -149,13 +149,14 @@ export default function BalanceModal({ isOpen, onClose, vehicles }: BalanceModal
         v.tipo_entrada || '-',
         v.motorista || '-',
         v.status === 'entrada' ? (v.origem || '-') : (v.destino || '-'),
-        new Date(v.data_entrada).toLocaleDateString('pt-BR'),
-        v.data_saida ? new Date(v.data_saida).toLocaleDateString('pt-BR') : '-'
+        v.solicitante_nome || '-',
+        v.solicitacao_data_retirada ? new Date(v.solicitacao_data_retirada).toLocaleDateString('pt-BR') : '-',
+        v.solicitacao_destino || '-'
       ]);
 
       autoTable(doc, {
         startY: 60,
-        head: [['Status', 'Placa', 'Modelo', 'Tipo', 'Motorista', 'Origem/Destino', 'Entrada', 'Saída']],
+        head: [['Status', 'Placa', 'Modelo', 'Tipo', 'Motorista', 'Origem/Destino', 'Entrada', 'Saída', 'Solicitante', 'Prev. Saída', 'Dest. Solicitado']],
         body: tableBody,
         theme: 'grid',
         headStyles: { fillColor: [26, 71, 42] },

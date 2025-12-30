@@ -35,6 +35,16 @@ const ExitModal = ({ open, onClose, vehicle, onUpdate }: ExitModalProps) => {
   });
 
   useEffect(() => {
+    if (vehicle.solicitante_nome && open) {
+      setExitData(prev => ({
+        ...prev,
+        solicitante: vehicle.solicitante_nome || '',
+        destino: vehicle.solicitacao_destino || '',
+      }));
+    }
+  }, [vehicle, open]);
+
+  useEffect(() => {
     if (step === 'form' && open) {
       setTimeout(() => {
         destinoRef.current?.focus();
@@ -115,7 +125,15 @@ const ExitModal = ({ open, onClose, vehicle, onUpdate }: ExitModalProps) => {
                   <p className="text-foreground"><strong>PLACA GUINCHO:</strong> {vehicle.placa_guincho}</p>
                 )}
                 <p className="text-foreground"><strong>MOTORISTA ENTRADA:</strong> {vehicle.motorista}</p>
-                <p className="text-muted-foreground text-sm">
+                {vehicle.solicitante_nome && (
+                  <div className="mt-4 p-2 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded">
+                    <p className="font-bold text-yellow-800 dark:text-yellow-400">⚠️ SOLICITAÇÃO DE SAÍDA</p>
+                    <p className="text-sm text-yellow-700 dark:text-yellow-500">SOLICITANTE: {vehicle.solicitante_nome}</p>
+                    <p className="text-sm text-yellow-700 dark:text-yellow-500">DESTINO: {vehicle.solicitacao_destino}</p>
+                    <p className="text-sm text-yellow-700 dark:text-yellow-500">DATA PREVISTA: {vehicle.solicitacao_data_retirada ? new Date(vehicle.solicitacao_data_retirada).toLocaleString('pt-BR') : '-'}</p>
+                  </div>
+                )}
+                <p className="text-muted-foreground text-sm mt-2">
                   ENTRADA EM {new Date(vehicle.data_entrada).toLocaleDateString('pt-BR')}
                 </p>
               </CardContent>

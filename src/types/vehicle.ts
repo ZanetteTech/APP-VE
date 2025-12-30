@@ -29,6 +29,12 @@ export interface VehicleEntry {
   created_by_matricula?: string;
   operator_name?: string;
   exit_operator_name?: string;
+  loja?: string;
+  // Campos de solicitação de saída
+  solicitante_nome?: string;
+  solicitacao_data_retirada?: string;
+  solicitacao_destino?: string;
+  solicitacao_data_criacao?: string;
 }
 
 export interface PhoneNumber {

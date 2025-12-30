@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,13 +11,17 @@ import { supabase } from '@/integrations/supabase/client';
 
 const Login = () => {
   const [matricula, setMatricula] = useState('');
+  const [loja, setLoja] = useState('');
   const [availableMatriculas, setAvailableMatriculas] = useState<string[]>([]);
+  const [availableLojas, setAvailableLojas] = useState<string[]>([]);
+  const [allProfiles, setAllProfiles] = useState<{matricula: string, loja: string}[]>([]);
   const [loadingMatriculas, setLoadingMatriculas] = useState(true);
   const [useManualInput, setUseManualInput] = useState(false);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const checkUser = async () => {
@@ -29,24 +33,62 @@ const Login = () => {
     checkUser();
   }, [navigate]);
 
+  // Inactivity timer
   useEffect(() => {
-    const fetchMatriculas = async () => {
+    let inactivityTimer: NodeJS.Timeout;
+
+    const resetTimer = () => {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(() => {
+        navigate('/home');
+      }, 60000); // 1 minute
+    };
+
+    // Initial start
+    resetTimer();
+
+    // Event listeners for user activity
+    window.addEventListener('click', resetTimer);
+    window.addEventListener('touchstart', resetTimer);
+    window.addEventListener('keypress', resetTimer); // Adding keypress as well for better UX
+    window.addEventListener('mousemove', resetTimer); // Adding mousemove as well
+
+    return () => {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      window.removeEventListener('click', resetTimer);
+      window.removeEventListener('touchstart', resetTimer);
+      window.removeEventListener('keypress', resetTimer);
+      window.removeEventListener('mousemove', resetTimer);
+    };
+  }, [navigate]);
+
+  useEffect(() => {
+    const fetchData = async () => {
       try {
         setLoadingMatriculas(true);
         const { data, error } = await supabase
           .from('profiles')
-          .select('matricula')
+          .select('matricula, loja')
           .order('matricula');
         
         if (error) {
-          console.error('Error fetching matriculas:', error);
+          console.error('Error fetching profiles:', error);
           setUseManualInput(true);
           return;
         }
 
         if (data && data.length > 0) {
-          const uniqueMatriculas = Array.from(new Set(data.map(p => p.matricula).filter(Boolean)));
+          const validProfiles = data.filter(p => p.matricula);
+          setAllProfiles(validProfiles);
+          
+          // Extract unique lojas
+          const uniqueLojas = Array.from(new Set(validProfiles.map(p => p.loja).filter(Boolean)));
+          setAvailableLojas(uniqueLojas.sort());
+
+          // Initial available matriculas (all)
+          const uniqueMatriculas = Array.from(new Set(validProfiles.map(p => p.matricula)));
           setAvailableMatriculas(uniqueMatriculas);
+
           if (uniqueMatriculas.length === 0) {
              setUseManualInput(true);
           }
@@ -54,14 +96,43 @@ const Login = () => {
           setUseManualInput(true);
         }
       } catch (error) {
-        console.error('Error fetching matriculas:', error);
+        console.error('Error fetching profiles:', error);
         setUseManualInput(true);
       } finally {
         setLoadingMatriculas(false);
       }
     };
-    fetchMatriculas();
+    fetchData();
   }, []);
+
+  useEffect(() => {
+    if (loja && loja !== 'ALL') {
+      const filtered = allProfiles
+        .filter(p => p.loja === loja)
+        .map(p => p.matricula);
+      setAvailableMatriculas(Array.from(new Set(filtered)));
+      setMatricula(''); // Reset matricula when store changes
+    } else if (allProfiles.length > 0) {
+      // If no store selected or ALL, show all
+      const all = allProfiles.map(p => p.matricula);
+      setAvailableMatriculas(Array.from(new Set(all)));
+    }
+  }, [loja, allProfiles]);
+
+  useEffect(() => {
+    if (!loadingMatriculas && location.state?.focusMatricula) {
+      setTimeout(() => {
+        const manualInput = document.getElementById('matricula');
+        const selectTrigger = document.getElementById('matricula-trigger');
+        
+        if (manualInput) {
+          manualInput.focus();
+        } else if (selectTrigger) {
+          selectTrigger.focus();
+        }
+      }, 100);
+    }
+  }, [loadingMatriculas, location.state]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,6 +190,23 @@ const Login = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
+            {availableLojas.length > 0 && !useManualInput && (
+              <div className="space-y-2">
+                <Label htmlFor="loja-filter" className="text-foreground">LOJA</Label>
+                <Select value={loja || 'ALL'} onValueChange={setLoja}>
+                  <SelectTrigger id="loja-filter" className="bg-input border-border text-foreground">
+                    <SelectValue placeholder="SELECIONE SUA LOJA" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">TODAS AS LOJAS</SelectItem>
+                    {availableLojas.map((l) => (
+                      <SelectItem key={l} value={l}>{l}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="matricula" className="text-foreground">MATRÍCULA</Label>
@@ -147,7 +235,7 @@ const Login = () => {
                  </div>
               ) : (
                 <Select value={matricula} onValueChange={setMatricula}>
-                  <SelectTrigger className="bg-input border-border text-foreground">
+                  <SelectTrigger id="matricula-trigger" className="bg-input border-border text-foreground">
                     <SelectValue placeholder="SELECIONE SUA MATRÍCULA" />
                   </SelectTrigger>
                   <SelectContent>

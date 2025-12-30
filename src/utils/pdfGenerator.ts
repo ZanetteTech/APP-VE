@@ -56,6 +56,7 @@ export const getPDFContent = (vehicle: VehicleEntry) => {
         <h2>DADOS DO VEÍCULO</h2>
         <div class="row"><span class="label">PLACA:</span><span class="value">${vehicle.placa}</span></div>
         <div class="row"><span class="label">MODELO:</span><span class="value">${vehicle.modelo}</span></div>
+        <div class="row"><span class="label">LOJA:</span><span class="value">${vehicle.loja || '-'}</span></div>
         <div class="row"><span class="label">ORIGEM:</span><span class="value">${vehicle.origem}</span></div>
         <div class="row"><span class="label">TIPO DE ENTRADA:</span><span class="value">${vehicle.tipo_entrada || '-'}</span></div>
         <div class="row"><span class="label">LANÇADO POR:</span><span class="value">${vehicle.created_by_matricula || 'N/A'}</span></div>

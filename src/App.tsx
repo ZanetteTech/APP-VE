@@ -35,6 +35,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
       setIsLoading(false);
     });
 
+    // Limpar dados legados do localStorage para garantir uso exclusivo do Supabase
+    const legacyKeys = ['users', 'profiles', 'matriculas', 'registered_users', 'user_data'];
+    legacyKeys.forEach(key => localStorage.removeItem(key));
+
     return () => subscription.unsubscribe();
   }, []);
 

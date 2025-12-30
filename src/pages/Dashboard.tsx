@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Car, Plus, Search, LogOut, Phone, ArrowRightLeft, FileText, MessageSquare, ArrowLeft, Share2, ClipboardList, Menu, ExternalLink, BarChart3 } from 'lucide-react';
+import { Car, Plus, Search, LogOut, Phone, ArrowRightLeft, FileText, MessageSquare, ArrowLeft, Share2, ClipboardList, Menu, ExternalLink, BarChart3, Filter } from 'lucide-react';
 import { VehicleEntry } from '@/types/vehicle';
 import { toast } from 'sonner';
 import VehicleCard from '@/components/VehicleCard';
@@ -49,6 +49,8 @@ const Dashboard = () => {
   const [phoneNumbers, setPhoneNumbers] = useState<{id: string; name: string; phone: string}[]>([]);
   const [userMatricula, setUserMatricula] = useState<string>('');
   const [userName, setUserName] = useState<string>('');
+  const [userRole, setUserRole] = useState<string>('CADASTRO');
+  const [userLoja, setUserLoja] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [vehicleToDelete, setVehicleToDelete] = useState<VehicleEntry | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -57,6 +59,8 @@ const Dashboard = () => {
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [showSearchDialog, setShowSearchDialog] = useState(false);
   const [searchedPlate, setSearchedPlate] = useState('');
+  const [viewLoja, setViewLoja] = useState<string>('TODOS');
+  const [availableLojas, setAvailableLojas] = useState<string[]>([]);
 
   const loadVehicles = async () => {
     try {
@@ -68,30 +72,60 @@ const Dashboard = () => {
 
       let matricula = user.user_metadata?.matricula;
       let name = user.user_metadata?.name;
+      let loja = user.user_metadata?.loja || '';
+      let role = user.user_metadata?.role || '';
 
-      if (!matricula || !name) {
+      // Force fetch from profiles if any critical data is missing
+      if (!matricula || !name || !loja || !role) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('matricula, name')
+          .select('matricula, name, loja, role')
           .eq('user_id', user.id)
           .single();
         
         if (profile) {
           matricula = matricula || profile.matricula;
           name = name || profile.name;
+          loja = loja || profile.loja;
+          role = role || profile.role || 'CADASTRO';
         }
       }
 
+      // If loja is still empty, try to infer from matricula or set a default
+      // if (!loja && role !== 'PESQUISA') {
+      //    loja = 'LOJA NÃO DEFINIDA';
+      // }
+
+      if (role === 'PESQUISA' && !loja) loja = 'TODAS';
+
       if (matricula) setUserMatricula(matricula);
       if (name) setUserName(name);
+      if (loja) setUserLoja(loja);
+      if (role) setUserRole(role);
 
-      const { data: vehiclesData, error } = await supabase
+      let query = supabase
         .from('vehicles')
         .select('*')
-        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
+      if (role !== 'PESQUISA' && loja) {
+        query = query.eq('loja', loja);
+      } else if (role !== 'PESQUISA') {
+        query = query.eq('user_id', user.id);
+      }
+
+      const { data: vehiclesData, error } = await query;
+
       if (error) throw error;
+
+      // Extract unique lojas for PESQUISA user
+      if (role === 'PESQUISA' && vehiclesData) {
+        const lojas = Array.from(new Set(vehiclesData.map(v => v.loja).filter(Boolean))) as string[];
+        setAvailableLojas(lojas);
+        if (viewLoja === 'TODOS' || !viewLoja) {
+          // Keep TODOS
+        }
+      }
 
       // Load photos for each vehicle
       const vehiclesWithPhotos = await Promise.all(
@@ -192,7 +226,7 @@ const Dashboard = () => {
 
       toast.success("VEÍCULO EXCLUÍDO: O veículo foi removido com sucesso.");
       
-      loadVehicles();
+      await loadVehicles();
     } catch (error) {
       console.error('Error deleting vehicle:', error);
       toast.error("ERRO AO EXCLUIR: Não foi possível excluir o veículo.");
@@ -330,8 +364,18 @@ const Dashboard = () => {
     setShowWhatsAppModal(false);
   };
 
-  const entradas = vehicles.filter(v => v.status === 'entrada');
-  const saidas = vehicles.filter(v => v.status === 'saida');
+  const filteredVehicles = vehicles.filter(v => {
+    if (userRole === 'PESQUISA') {
+      if (viewLoja && viewLoja !== 'TODOS') {
+        return v.loja === viewLoja;
+      }
+      return true;
+    }
+    return true;
+  });
+
+  const entradas = filteredVehicles.filter(v => v.status === 'entrada');
+  const saidas = filteredVehicles.filter(v => v.status === 'saida');
 
   return (
     <div className="min-h-screen gradient-dark">
@@ -344,64 +388,91 @@ const Dashboard = () => {
             </div>
             <div>
               <h1 className="text-xl font-bold text-foreground leading-none">SISTEMA DE PÁTIO</h1>
-              {userMatricula && <p className="text-xs text-muted-foreground mt-1">OLÁ, {userName ? `${userName} - ` : ''}{userMatricula}</p>}
+              {userMatricula && <p className="text-xs text-muted-foreground mt-1">OLÁ, {userName ? `${userName} - ` : ''}MATRICULA-{userMatricula} {userLoja && userLoja !== 'undefined' ? `LOJA ${userLoja}` : ''}</p>}
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Desktop Actions */}
-            <div className="hidden md:flex items-center gap-2">
+            {/* Filter by Loja for Pesquisa User */}
+            {userRole === 'PESQUISA' && availableLojas.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="gap-2 border-primary/20 hover:bg-primary/10">
-                    <Menu className="w-4 h-4" />
-                    MENU
+                    <Filter className="w-4 h-4" />
+                    {viewLoja === 'TODOS' ? 'TODOS OS PÁTIOS' : viewLoja}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 p-2 gap-2 flex flex-col">
-                  <DropdownMenuItem 
-                    onClick={() => navigate('/cadastro')} 
-                    className="cursor-pointer py-2.5"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    NOVA ENTRADA
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setViewLoja('TODOS')}>
+                    TODOS OS PÁTIOS
                   </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={() => setShowExternalLinkModal(true)} 
-                    className="cursor-pointer py-2.5"
-                  >
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    INCLUSÃO PLACAS
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={() => setShowReportModal(true)} 
-                    className="cursor-pointer py-2.5"
-                  >
-                    <FileText className="w-4 h-4 mr-2" />
-                    RELATÓRIOS
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={() => setShowBalanceModal(true)} 
-                    className="cursor-pointer py-2.5"
-                  >
-                    <BarChart3 className="w-4 h-4 mr-2" />
-                    BALANÇO MENSAL
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={() => navigate('/inventory')} 
-                    className="cursor-pointer py-2.5"
-                  >
-                    <ClipboardList className="w-4 h-4 mr-2" />
-                    INVENTÁRIO
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={() => setShowPhoneManager(true)} 
-                    className="cursor-pointer py-2.5"
-                  >
-                    <Phone className="w-4 h-4 mr-2" />
-                    TELEFONE
-                  </DropdownMenuItem>
+                  {availableLojas.map((loja) => (
+                    <DropdownMenuItem key={loja} onClick={() => setViewLoja(loja)}>
+                      {loja}
+                    </DropdownMenuItem>
+                  ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+            )}
+
+            {/* Desktop Actions */}
+            <div className="hidden md:flex items-center gap-2">
+              {userRole !== 'PESQUISA' && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      className="gap-2 border-primary/20 hover:bg-primary/10"
+                    >
+                      <Menu className="w-4 h-4" />
+                      MENU
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 p-2 gap-2 flex flex-col">
+                    <DropdownMenuItem 
+                      onClick={() => navigate('/cadastro')} 
+                      className="cursor-pointer py-2.5"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      NOVA ENTRADA
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={() => setShowExternalLinkModal(true)} 
+                      className="cursor-pointer py-2.5"
+                    >
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      INCLUSÃO PLACAS
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={() => setShowReportModal(true)} 
+                      className="cursor-pointer py-2.5"
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      RELATÓRIOS
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={() => setShowBalanceModal(true)} 
+                      className="cursor-pointer py-2.5"
+                    >
+                      <BarChart3 className="w-4 h-4 mr-2" />
+                      BALANÇO MENSAL
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={() => navigate('/inventory')} 
+                      className="cursor-pointer py-2.5"
+                    >
+                      <ClipboardList className="w-4 h-4 mr-2" />
+                      INVENTÁRIO
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={() => setShowPhoneManager(true)} 
+                      className="cursor-pointer py-2.5"
+                    >
+                      <Phone className="w-4 h-4 mr-2" />
+                      TELEFONE
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
 
               <Button variant="destructive" onClick={handleLogout} className="hover:bg-destructive/80">
                 <LogOut className="w-4 h-4 mr-2" />
@@ -411,44 +482,59 @@ const Dashboard = () => {
 
             {/* Mobile Menu */}
             <div className="md:hidden">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
-                    <Menu className="w-6 h-6" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 glass-card border-border/50">
-                  <DropdownMenuItem onClick={() => navigate('/cadastro')} className="py-3">
-                    <Plus className="w-4 h-4 mr-2" />
-                    NOVA ENTRADA
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setShowExternalLinkModal(true)} className="py-3">
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    INCLUSÃO PLACAS
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setShowReportModal(true)} className="py-3">
-                    <FileText className="w-4 h-4 mr-2" />
-                    RELATÓRIOS
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setShowBalanceModal(true)} className="py-3">
-                    <BarChart3 className="w-4 h-4 mr-2" />
-                    BALANÇO MENSAL
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate('/inventory')} className="py-3">
-                    <ClipboardList className="w-4 h-4 mr-2" />
-                    INVENTÁRIO
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setShowPhoneManager(true)} className="py-3">
-                    <Phone className="w-4 h-4 mr-2" />
-                    TELEFONE
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-border/50" />
-                  <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-white focus:bg-destructive py-3">
-                    <LogOut className="w-4 h-4 mr-2" />
-                    SAIR
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {userRole !== 'PESQUISA' ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <Menu className="w-6 h-6" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 glass-card border-border/50">
+                    <DropdownMenuItem onClick={() => navigate('/cadastro')} className="py-3">
+                      <Plus className="w-4 h-4 mr-2" />
+                      NOVA ENTRADA
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setShowExternalLinkModal(true)} className="py-3">
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      INCLUSÃO PLACAS
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setShowReportModal(true)} className="py-3">
+                      <FileText className="w-4 h-4 mr-2" />
+                      RELATÓRIOS
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setShowBalanceModal(true)} className="py-3">
+                      <BarChart3 className="w-4 h-4 mr-2" />
+                      BALANÇO MENSAL
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate('/inventory')} className="py-3">
+                      <ClipboardList className="w-4 h-4 mr-2" />
+                      INVENTÁRIO
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setShowPhoneManager(true)} className="py-3">
+                      <Phone className="w-4 h-4 mr-2" />
+                      TELEFONE
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-border/50" />
+                    <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-white focus:bg-destructive py-3">
+                      <LogOut className="w-4 h-4 mr-2" />
+                      SAIR
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="text-destructive hover:text-destructive/80"
+                  onClick={handleLogout}
+                >
+                  <LogOut className="w-6 h-6" />
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -542,15 +628,17 @@ const Dashboard = () => {
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {entradas.map((vehicle) => (
-                    <VehicleCard 
-                      key={vehicle.id} 
-                      vehicle={vehicle} 
-                      onWhatsApp={handleWhatsApp} 
-                      onExit={handleExit}
-                      onEdit={handleEdit}
-                      onDelete={handleDelete}
-                    />
-                  ))}
+                  <VehicleCard
+                    key={vehicle.id}
+                    vehicle={vehicle}
+                    onWhatsApp={userRole !== 'PESQUISA' ? handleWhatsApp : undefined}
+                    onExit={userRole !== 'PESQUISA' ? handleExit : undefined}
+                    onEdit={userRole !== 'PESQUISA' ? handleEdit : undefined}
+                    onDelete={userRole !== 'PESQUISA' ? handleDelete : undefined}
+                    hideActions={userRole === 'PESQUISA'}
+                    currentUser={{ name: userName, matricula: userMatricula, role: userRole }}
+                  />
+                ))}
                 </div>
               )}
             </div>
@@ -574,14 +662,16 @@ const Dashboard = () => {
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {saidas.map((vehicle) => (
-                    <VehicleCard 
-                      key={vehicle.id} 
-                      vehicle={vehicle} 
-                      onWhatsApp={handleWhatsApp} 
-                      onRevert={handleRevert}
-                      onDelete={handleDelete}
-                    />
-                  ))}
+                  <VehicleCard
+                    key={vehicle.id}
+                    vehicle={vehicle}
+                    onWhatsApp={userRole !== 'PESQUISA' ? handleWhatsApp : undefined}
+                    onRevert={userRole !== 'PESQUISA' ? handleRevert : undefined}
+                    onDelete={userRole !== 'PESQUISA' ? handleDelete : undefined}
+                    hideActions={userRole === 'PESQUISA'}
+                    currentUser={{ name: userName, matricula: userMatricula, role: userRole }}
+                  />
+                ))}
                 </div>
               )}
             </div>
@@ -626,6 +716,11 @@ const Dashboard = () => {
                           : `Saída: ${selectedVehicle.data_saida ? new Date(selectedVehicle.data_saida).toLocaleString('pt-BR') : 'N/A'}`
                         }
                       </p>
+                      {selectedVehicle.loja && selectedVehicle.loja !== 'undefined' && selectedVehicle.loja !== 'null' && (
+                        <p className="text-xs font-bold mt-1 text-foreground uppercase bg-secondary/50 px-2 py-0.5 rounded-md inline-block">
+                          LOJA: {selectedVehicle.loja}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -666,7 +761,7 @@ const Dashboard = () => {
             <Button variant="outline" onClick={() => setShowSearchDialog(false)} className="w-full sm:w-auto">
               FECHAR
             </Button>
-            {selectedVehicle && selectedVehicle.status === 'entrada' && (
+            {selectedVehicle && selectedVehicle.status === 'entrada' && userRole !== 'PESQUISA' && (
               <Button 
                 onClick={() => {
                   setShowSearchDialog(false);
