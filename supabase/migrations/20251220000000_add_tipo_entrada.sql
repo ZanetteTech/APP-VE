@@ -1,1 +1,0 @@
-ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS tipo_entrada TEXT;
