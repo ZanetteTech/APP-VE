@@ -11,6 +11,7 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
+import FeatureSettings from "./pages/FeatureSettings";
 import Cadastro from "./pages/Cadastro";
 import Inventory from "./pages/Inventory";
 import NotFound from "./pages/NotFound";
@@ -68,6 +69,11 @@ const App = () => (
             <Route path="/dashboard" element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings" element={
+              <ProtectedRoute>
+                <FeatureSettings />
               </ProtectedRoute>
             } />
             <Route path="/cadastro" element={

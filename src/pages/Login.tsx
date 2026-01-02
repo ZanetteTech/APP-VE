@@ -33,34 +33,6 @@ const Login = () => {
     checkUser();
   }, [navigate]);
 
-  // Inactivity timer
-  useEffect(() => {
-    let inactivityTimer: NodeJS.Timeout;
-
-    const resetTimer = () => {
-      if (inactivityTimer) clearTimeout(inactivityTimer);
-      inactivityTimer = setTimeout(() => {
-        navigate('/home');
-      }, 60000); // 1 minute
-    };
-
-    // Initial start
-    resetTimer();
-
-    // Event listeners for user activity
-    window.addEventListener('click', resetTimer);
-    window.addEventListener('touchstart', resetTimer);
-    window.addEventListener('keypress', resetTimer); // Adding keypress as well for better UX
-    window.addEventListener('mousemove', resetTimer); // Adding mousemove as well
-
-    return () => {
-      if (inactivityTimer) clearTimeout(inactivityTimer);
-      window.removeEventListener('click', resetTimer);
-      window.removeEventListener('touchstart', resetTimer);
-      window.removeEventListener('keypress', resetTimer);
-      window.removeEventListener('mousemove', resetTimer);
-    };
-  }, [navigate]);
 
   useEffect(() => {
     const fetchData = async () => {

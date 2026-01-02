@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -26,6 +26,7 @@ import {
 
 const Cadastro = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
   const { toast } = useToast();
   const { guinchos, origens, tiposEntrada } = useHistoricalData();
@@ -87,13 +88,48 @@ const Cadastro = () => {
 
 
 
+  const [requestId, setRequestId] = useState<string | null>(null);
+
   useEffect(() => {
     if (isEditing) {
       loadVehicleData();
     } else {
-      setTimeout(() => placaRef.current?.focus(), 100);
+      // Check location state first, then session storage
+      const approvedRequest = location.state?.approvedRequest || 
+        (sessionStorage.getItem('entryRequest') ? JSON.parse(sessionStorage.getItem('entryRequest') || '{}') : null);
+
+      if (approvedRequest && approvedRequest.placa) {
+        setRequestId(approvedRequest.id);
+        setFormData(prev => ({
+          ...prev,
+          placa: approvedRequest.placa || '',
+          modelo: approvedRequest.modelo || '',
+        }));
+        
+        // Auto-add model to the list if it doesn't exist
+        if (approvedRequest.modelo) {
+           setCarModels(prev => {
+               const exists = prev.some(m => m.value === approvedRequest.modelo);
+               if (!exists) {
+                   return [...prev, { value: approvedRequest.modelo, label: approvedRequest.modelo }].sort((a, b) => a.label.localeCompare(b.label));
+               }
+               return prev;
+           });
+        }
+        
+        toast({
+          title: 'DADOS IMPORTADOS',
+          description: 'Os dados da solicitação foram preenchidos automaticamente.',
+        });
+        
+        // Clear session storage to avoid persisting on reload if not desired, 
+        // or keep it if we want to survive reload. Let's clear it to be safe.
+        sessionStorage.removeItem('entryRequest');
+      } else {
+        setTimeout(() => placaRef.current?.focus(), 100);
+      }
     }
-  }, [id]);
+  }, [id, location.state]);
 
   const loadVehicleData = async () => {
     setLoading(true);
@@ -510,6 +546,39 @@ const Cadastro = () => {
         if (photosError) console.error('Error saving photos:', photosError);
       }
 
+      if (requestId) {
+        // Mark request as completed to hide it and stop notifications
+        const { error: requestError } = await supabase
+          .from('app_requests')
+          .update({ 
+            status: 'completed',
+            notified: true // Ensure it doesn't notify again just in case
+          })
+          .eq('id', requestId);
+          
+        if (requestError) console.error('Error updating request status:', requestError);
+      } else {
+        // Try to find any pending/approved request for this plate and mark as completed
+        // This covers manual entry without clicking the "Realizar Entrada" button
+        const { data: requests } = await supabase
+          .from('app_requests')
+          .select('id')
+          .eq('placa', formData.placa)
+          .neq('status', 'completed');
+          
+        if (requests && requests.length > 0) {
+           const { error: updateError } = await supabase
+            .from('app_requests')
+            .update({ 
+              status: 'completed',
+              notified: true 
+            })
+            .in('id', requests.map(r => r.id));
+            
+           if (updateError) console.error('Error auto-completing requests:', updateError);
+        }
+      }
+
       toast({ title: isEditing ? 'VEÍCULO ATUALIZADO COM SUCESSO!' : 'VEÍCULO CADASTRADO COM SUCESSO!' });
       navigate('/dashboard');
     } catch (error) {
@@ -568,9 +637,9 @@ const Cadastro = () => {
                     placeholder="ABC-1234"
                     value={formData.placa}
                     onChange={(value) => {
-                      handleChange('placa', value);
+                      handleChange('placa', value.toUpperCase());
                       if (value.length >= 7) {
-                        checkPlaca(value);
+                        checkPlaca(value.toUpperCase());
                       }
                     }}
                     className="bg-input border-border text-foreground placeholder:text-muted-foreground"

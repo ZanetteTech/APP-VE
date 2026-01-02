@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
 const Register = () => {
-  const [role, setRole] = useState('CADASTRO');
+  const [role, setRole] = useState('');
   const [name, setName] = useState('');
   const [matricula, setMatricula] = useState('');
   const [loja, setLoja] = useState('');
@@ -36,8 +36,8 @@ const Register = () => {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Skip validation for loja if role is PESQUISA
-    const isLojaValid = role === 'PESQUISA' ? true : !!loja;
+    // Skip validation for loja if role is PESQUISA or GESTAO_APP
+    const isLojaValid = (role === 'PESQUISA' || role === 'GESTAO_APP') ? true : !!loja;
 
     if (!name || !matricula || !isLojaValid || !password || !confirmPassword) {
       toast.error("Por favor, preencha todos os campos.", {
@@ -73,7 +73,7 @@ const Register = () => {
           data: {
             matricula: matricula.toUpperCase(),
             name: name.toUpperCase(),
-            loja: role === 'PESQUISA' ? 'TODAS' : loja.toUpperCase(),
+            loja: (role === 'PESQUISA' || role === 'GESTAO_APP') ? 'TODAS' : loja.toUpperCase(),
             role: role,
           }
         }
@@ -90,6 +90,7 @@ const Register = () => {
 
       if (data.user) {
         // Profile is created automatically by database trigger
+        await supabase.auth.signOut(); // Ensure user is not logged in so they land on Login page
         toast.success('CADASTRO REALIZADO COM SUCESSO!');
         navigate('/login', { state: { focusMatricula: true } });
       }
@@ -134,6 +135,7 @@ const Register = () => {
                     <SelectContent>
                       <SelectItem value="CADASTRO">USUÁRIO CADASTRO</SelectItem>
                       <SelectItem value="PESQUISA">USUÁRIO PESQUISA</SelectItem>
+                      <SelectItem value="GESTAO_APP">GESTÃO APP</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -184,7 +186,7 @@ const Register = () => {
                   </div>
                 </div>
 
-                {role !== 'PESQUISA' && (
+                {role !== 'PESQUISA' && role !== 'GESTAO_APP' && (
                   <div className="space-y-2">
                     <Label htmlFor="loja" className="text-foreground">LOJA</Label>
                     <div className="relative">
